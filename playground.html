@@ -220,19 +220,19 @@
 
       <label class="ctl"><code>l-means</code> Mode
         <select id="selMode">
-          <option value="fixed" selected>Fixed K</option>
-          <option value="emergent">Emergent K(t) (0-Param MDL, starts at K=1)</option>
+          <option value="emergent" selected>Emergent K(t) (0-Param MDL, starts at K=1)</option>
+          <option value="fixed">Fixed K</option>
         </select>
       </label>
 
       <label class="ctl">Metric
         <select id="selMetric">
-          <option value="mse" selected>Quantization MSE</option>
-          <option value="mdl">MDL Code Length (nats/pt)</option>
+          <option value="mdl" selected>MDL Code Length (nats/pt)</option>
+          <option value="mse">Quantization MSE</option>
         </select>
       </label>
 
-      <label class="ctl" id="lblKWrap"><span id="lblKText">Clusters <code>K</code></span>
+      <label class="ctl" id="lblKWrap"><span id="lblKText">Baseline <code>K</code> (Lloyd / <code>e-means</code>)</span>
         <input type="range" id="rngK" min="5" max="80" value="36">
         <span class="mono-val" id="valK">36</span>
       </label>
