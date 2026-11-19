@@ -552,9 +552,9 @@
         if (nEff[r] > maxNeff) maxNeff = nEff[r];
       }
     }
-    if (first < 0) return { x: 0, y: 0, nEff: 0, traceVar: 0, rateMass: rateAt, statW: 1 };
+    if (first < 0) return { x: 0, y: 0, nEff: 0, traceVar: 0, rateMass: rateAt, slowMass: 0, statW: 1 };
     if (maxNeff <= 3) {
-      return { x: rc[2 * first], y: rc[2 * first + 1], nEff: nEff[first], traceVar: 0, rateMass: rateAt, statW: 1 };
+      return { x: rc[2 * first], y: rc[2 * first + 1], nEff: nEff[first], traceVar: 0, rateMass: rateAt, slowMass: nAt[4], statW: 1 };
     }
     let rVar = 4;
     for (let r = 0; r < 5; r++) if (valid[r] && nEff[r] > 3) { rVar = r; break; }
@@ -586,7 +586,7 @@
         curN = Math.min(ns, Math.max(curN, traceVar / Math.max(1e-28, vn)));
       }
     }
-    return { x: ox, y: oy, nEff: curN, traceVar, rateMass: rateAt, statW };
+    return { x: ox, y: oy, nEff: curN, traceVar, rateMass: rateAt, slowMass: nAt[4], statW };
   }
 
   function mergeBankInto(dst, src) {
@@ -872,7 +872,7 @@
     for (let j = 0; j < K; j++) {
       const ro = readoutBank(state.banks[j], state.tau);
       cFlat[2 * j] = ro.x; cFlat[2 * j + 1] = ro.y;
-      if (ro.nEff >= 64 && ro.statW < 0.04) {
+      if (state.banks[j].sn[8] >= 48 && ro.statW < 0.05) {
         state.cands[j] = null;
         state.sketches[j] = makeMicroSketch(initCap, initWarm);
       }
@@ -1057,18 +1057,27 @@
       }
       const isSib = idx => idx === splitDonor || newIdxs.indexOf(idx) >= 0;
       let bestMerge = null;
-      for (let j = 0; j < state.banks.length; j++) {
-        if (ros[j].nEff < 4 || ros[j].traceVar <= 1e-24) continue;
-        const sj2Raw = Math.max(1e-24, ros[j].traceVar / 2);
-        for (let u = j + 1; u < state.banks.length; u++) {
-          if (didSplit && (isSib(j) === isSib(u))) continue;
-          if (ros[u].nEff < 4 || ros[u].traceVar <= 1e-24) continue;
-          const su2Raw = Math.max(1e-24, ros[u].traceVar / 2);
-          let sj2 = sj2Raw, su2 = su2Raw;
+      const KCur = state.banks.length;
+      for (let j = 0; j < KCur; j++) {
+        const nj = Math.max(0, Math.min(ros[j].nEff, 4.0 * ros[j].slowMass));
+        const sj2Raw = ros[j].traceVar > 1e-24 ? ros[j].traceVar / 2 : 1e-12;
+        pairLoop: for (let u = j + 1; u < KCur; u++) {
+          if (didSplit && isSib(j) && isSib(u)) continue;
+          const nu = Math.max(0, Math.min(ros[u].nEff, 4.0 * ros[u].slowMass));
+          const nt = nj + nu;
+          if (nt < 4 || (ros[j].traceVar <= 1e-24 && ros[u].traceVar <= 1e-24) || (nj <= 1e-9 && nu <= 1e-9)) continue;
           const dxC = ros[u].x - ros[j].x, dyC = ros[u].y - ros[j].y;
           const d2 = dxC * dxC + dyC * dyC;
-          const nj = ros[j].nEff, nu = ros[u].nEff, nt = nj + nu;
-          const pj = Math.min(1 - 1e-9, Math.max(1e-9, nj / nt)), pu = 1 - pj;
+          for (let w = 0; w < KCur; w++) {
+            if (w === j || w === u) continue;
+            const dwj = Math.pow(ros[w].x - ros[j].x, 2) + Math.pow(ros[w].y - ros[j].y, 2);
+            const dwu = Math.pow(ros[w].x - ros[u].x, 2) + Math.pow(ros[w].y - ros[u].y, 2);
+            if (dwj + dwu < d2) continue pairLoop;
+          }
+          const su2Raw = ros[u].traceVar > 1e-24 ? ros[u].traceVar / 2 : sj2Raw;
+          const sj2Eff = ros[j].traceVar > 1e-24 ? sj2Raw : su2Raw;
+          let sj2 = sj2Eff, su2 = su2Raw;
+          const pj = Math.min(1 - 1e-15, Math.max(1e-15, nj / nt)), pu = 1 - pj;
 
           if (d2 > 1e-24 && bn[j] >= 4 && bn[u] >= 4) {
             const invL = 1 / Math.sqrt(d2);
@@ -1082,12 +1091,12 @@
                 if ((dx * dxC + dy * dyC) * invL >= 0) { outU += (dx * dx + dy * dy) / 2; nOutU++; }
               }
             }
-            if (nOutJ >= 3) sj2 = Math.min(sj2Raw, Math.max(1e-24, outJ / nOutJ));
+            if (nOutJ >= 3) sj2 = Math.min(sj2Eff, Math.max(1e-24, outJ / nOutJ));
             if (nOutU >= 3) su2 = Math.min(su2Raw, Math.max(1e-24, outU / nOutU));
           }
           const sMerged2 = pj * sj2 + pu * su2 + 0.5 * pj * pu * d2;
           const distortNats = nt * (Math.log(sMerged2) - pj * Math.log(sj2) - pu * Math.log(su2));
-          const savedNats = nt * (-pj * Math.log(pj) - pu * Math.log(pu)) + 2.0 * (Math.log(1 + nj) + Math.log(1 + nu) - Math.log(1 + nt));
+          const savedNats = nt * (-pj * Math.log(pj) - pu * Math.log(pu)) + 2.0 * (Math.log(2 + nj) + Math.log(2 + nu) - Math.log(2 + nt));
           if (distortNats < savedNats && (!bestMerge || (distortNats - savedNats) < bestMerge.net)) {
             bestMerge = { net: distortNats - savedNats, j, u };
           }
