@@ -1,0 +1,1542 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>Live Playground : l-means vs. e-means</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #ffffff;
+    --bg-soft: #fbfbfa;
+    --ink: #16191d;
+    --ink-2: #555d66;
+    --rule: #e2e5e9;
+    --emared: #d62728;
+    --emablue: #1f77b4;
+    --ours: #0b8043;
+    --ours-soft: #eaf7f0;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 15.5px;
+    line-height: 1.5;
+  }
+  .em-header {
+    border-bottom: 1px solid var(--rule);
+    background: var(--bg-soft);
+  }
+  .em-header-inner {
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 11px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  .em-brand { display: flex; align-items: baseline; gap: 12px; }
+  .em-title-chip { font-weight: 700; font-size: 16px; color: var(--ink); text-decoration: none; }
+  .em-badge {
+    font-family: "IBM Plex Mono", monospace; font-size: 11.5px; font-weight: 600;
+    color: var(--ours); background: var(--ours-soft); border: 1px solid #b7e4c7;
+    padding: 2px 8px; border-radius: 999px;
+  }
+  .em-nav { font-family: "IBM Plex Mono", monospace; font-size: 13px; display: flex; gap: 20px; }
+  .em-nav a { color: var(--ink-2); text-decoration: none; padding-bottom: 2px; border-bottom: 2px solid transparent; }
+  .em-nav a:hover, .em-nav a.active { color: var(--ink); border-bottom-color: var(--ours); }
+
+  .wide { max-width: 1280px; margin: 0 auto; padding: 18px 24px 64px; }
+  h1 { font-size: 1.55rem; margin: 4px 0 6px; letter-spacing: -0.015em; }
+  p.lede { color: var(--ink-2); margin: 0 0 14px; max-width: 900px; font-size: 0.96rem; }
+
+  fieldset {
+    border: 1px solid var(--rule);
+    border-radius: 9px;
+    background: var(--bg-soft);
+    padding: 10px 16px 12px;
+    margin: 0 0 14px;
+  }
+  legend {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--ink-2);
+    padding: 0 6px;
+  }
+  .ctrl-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px 22px;
+    align-items: center;
+  }
+  label.ctl {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 0.86rem;
+    font-weight: 500;
+  }
+  select, input[type=number] {
+    font-family: inherit;
+    font-size: 0.85rem;
+    padding: 4px 8px;
+    border-radius: 5px;
+    border: 1px solid #cfd5dc;
+    background: #fff;
+  }
+  input[type=range] { width: 105px; accent-color: var(--ours); }
+  .mono-val {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.82rem;
+    min-width: 2.6em;
+    color: var(--ours);
+    font-weight: 600;
+  }
+  .btn {
+    padding: 6px 15px;
+    border-radius: 6px;
+    font-weight: 600;
+    font-size: 0.86rem;
+    cursor: pointer;
+    border: 1px solid var(--ink);
+    background: var(--ink);
+    color: #fff;
+  }
+  .btn.green { background: var(--ours); border-color: var(--ours); }
+  .btn.outline { background: #fff; color: var(--ink); border-color: #cfd5dc; }
+  .btn:hover { opacity: 0.92; }
+
+  .unlearn-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    background: var(--ours-soft);
+    border: 1px solid #b7e4c7;
+    border-radius: 8px;
+    padding: 8px 14px;
+    margin-bottom: 14px;
+    font-size: 0.86rem;
+    color: #14452f;
+  }
+  .unlearn-stat { font-family: "IBM Plex Mono", monospace; font-size: 0.8rem; }
+
+  .arena {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr 1.12fr;
+    gap: 14px;
+    align-items: start;
+  }
+  @media (max-width: 1060px) { .arena { grid-template-columns: 1fr 1fr; } }
+  @media (max-width: 580px) { .arena { grid-template-columns: 1fr; } }
+
+  .pcard {
+    background: var(--bg-soft);
+    border: 1px solid var(--rule);
+    border-radius: 9px;
+    padding: 10px 10px 12px;
+    text-align: center;
+  }
+  .ptitle { font-size: 0.85rem; font-weight: 700; margin-bottom: 6px; }
+  canvas {
+    width: 100%;
+    height: auto;
+    display: block;
+    background: #fff;
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+  }
+  #cvLap { cursor: crosshair; }
+  .pread {
+    margin-top: 7px;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.8rem;
+    color: var(--ink-2);
+  }
+  .pread b { color: var(--ink); }
+  .pread.win b { color: var(--ours); }
+
+  .playbar {
+    margin-top: 14px;
+    background: var(--bg-soft);
+    border: 1px solid var(--rule);
+    border-radius: 9px;
+    padding: 10px 14px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex-wrap: wrap;
+  }
+  #timeline { flex: 1; min-width: 180px; width: auto; }
+</style>
+</head>
+<body>
+
+<header class="em-header">
+  <div class="em-header-inner">
+    <div class="em-brand">
+      <a class="em-title-chip" href="index.html">&larr; Blog Post</a>
+      <span class="em-badge">Interactive 2D Playground</span>
+    </div>
+    <nav class="em-nav">
+      <a href="index.html">Blog post</a>
+      <a href="playground.html" class="active">Live Playground</a>
+    </nav>
+  </div>
+</header>
+
+<div class="wide">
+  <h1>Live Browser Playground: Lloyd vs. <code>e-means</code> vs. <code>l-means</code></h1>
+  <p class="lede">
+    Pick any distribution, cluster count <code>K</code>, initialization trap, and pass budget below to run all three algorithms live in your browser. After or during a run, <strong>drag across the green <code>l-means</code> canvas</strong> to apply exact <strong>additive inverses (<code>&minus;u_k</code>)</strong> that cancel past points in real time!
+  </p>
+
+  <fieldset>
+    <legend>Dataset &amp; Clustering Controls</legend>
+    <div class="ctrl-grid">
+      <label class="ctl">Dataset
+        <select id="selDataset">
+          <option value="hero">Hero Multi-Scale (2 wide + 3 tight)</option>
+          <option value="grid3x3">3x3 Grid Local-Minimum Trap</option>
+          <option value="twosizes">Two Blob Sizes (88% + 12%)</option>
+          <option value="zipf">Zipf Core + 4 Rare Satellites</option>
+          <option value="olympic">Olympic Rings (5 rings)</option>
+          <option value="spirals">Three Spirals</option>
+          <option value="rings">Concentric Rings</option>
+          <option value="heart">Heart Manifold</option>
+          <option value="star">5-Pointed Star</option>
+        </select>
+      </label>
+
+      <label class="ctl"><code>l-means</code> Mode
+        <select id="selMode">
+          <option value="fixed" selected>Fixed K</option>
+          <option value="emergent">Emergent K(t) (0-Param MDL, starts at K=1)</option>
+        </select>
+      </label>
+
+      <label class="ctl">Metric
+        <select id="selMetric">
+          <option value="mse" selected>Quantization MSE</option>
+          <option value="mdl">MDL Code Length (nats/pt)</option>
+        </select>
+      </label>
+
+      <label class="ctl" id="lblKWrap"><span id="lblKText">Clusters <code>K</code></span>
+        <input type="range" id="rngK" min="5" max="80" value="36">
+        <span class="mono-val" id="valK">36</span>
+      </label>
+
+      <label class="ctl">Points <code>N</code>
+        <select id="selN">
+          <option value="3000">3,000</option>
+          <option value="6000" selected>6,000</option>
+          <option value="12000">12,000</option>
+        </select>
+      </label>
+
+      <label class="ctl">Batch <code>B</code>
+        <select id="selB">
+          <option value="128">128</option>
+          <option value="200" selected>200</option>
+          <option value="400">400</option>
+        </select>
+      </label>
+
+      <label class="ctl">Baseline Passes
+        <select id="selPasses">
+          <option value="1">1.0</option>
+          <option value="3" selected>3.0 (l-means stops at 1.0)</option>
+          <option value="4">4.0 (l-means stops at 1.0)</option>
+        </select>
+      </label>
+
+      <label class="ctl">Init
+        <select id="selInit">
+          <option value="corner" selected>Corner Trap (adversarial)</option>
+          <option value="uniform">Random Sample from Data</option>
+        </select>
+      </label>
+
+      <label class="ctl">Seed
+        <input type="number" id="inpSeed" value="42" min="1" max="99999" style="width:68px">
+      </label>
+
+      <button class="btn green" id="btnRun">&#9654; Run Live</button>
+      <button class="btn outline" id="btnNewSeed">New Seed</button>
+    </div>
+  </fieldset>
+
+  <div class="unlearn-bar">
+    <div>
+      <strong>Additive-Inverse Unlearning (<code>&minus;u_k</code>):</strong> Click or drag inside the green <strong><code>l-means</code></strong> panel to apply additive inverses <code>(t_k, &minus;1, x_k)</code> that cancel each erased point's decayed trace across all 5 exponential rungs in <code>O(D)</code> time!
+    </div>
+    <div class="unlearn-stat" id="unlearnStat">Unlearned: 0 pts</div>
+  </div>
+
+  <div class="arena">
+    <div class="pcard">
+      <div class="ptitle" style="color:var(--emared)">Lloyd (0 clusters &lt; 1 pass)</div>
+      <canvas id="cvLloyd" width="320" height="320"></canvas>
+      <div class="pread" id="roLloyd"></div>
+    </div>
+    <div class="pcard">
+      <div class="ptitle" style="color:var(--emablue)">e-means (Multi-Pass)</div>
+      <canvas id="cvFair" width="320" height="320"></canvas>
+      <div class="pread" id="roFair"></div>
+    </div>
+    <div class="pcard">
+      <div class="ptitle" style="color:var(--ours)">l-means (1 Pass &middot; Drag to Unlearn)</div>
+      <canvas id="cvLap" width="320" height="320"></canvas>
+      <div class="pread win" id="roLap"></div>
+    </div>
+    <div class="pcard">
+      <div class="ptitle" id="titleChart" style="color:var(--ink)">Live Test MSE vs. Passes</div>
+      <canvas id="cvMse" width="358" height="320"></canvas>
+      <div class="pread" id="roStep"></div>
+    </div>
+  </div>
+
+  <div class="playbar">
+    <button class="btn" id="btnPlayPause">Pause</button>
+    <input type="range" id="timeline" min="0" max="1" value="0" step="1">
+    <span class="mono-val" id="lblTimeline">Pass 0.00</span>
+    <span style="font-size:0.78rem;color:var(--ink-2);display:flex;gap:10px;flex-wrap:wrap">
+      <span><b style="color:#9aa2ae">&#9679;</b> unseen</span>
+      <span><b style="color:#1e242c">&#9679;</b> pass 1</span>
+      <span><b style="color:#d97706">&#9679;</b> pass 2</span>
+      <span><b style="color:#7c3aed">&#9679;</b> pass 3+</span>
+    </span>
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  const RED = "#d62728", BLUE = "#1f77b4", GREEN = "#0b8043";
+  const LN2 = Math.LN2;
+  const SCALAR_HL = [2, 4, 8, 16, 32, 64, 128, 256, Infinity];
+  const VEC_IDX = [0, 2, 4, 6, 8];
+  const RATES = SCALAR_HL.map(h => h === Infinity ? 0 : LN2 / h);
+
+  function mulberry32(seed) {
+    let a = seed >>> 0;
+    return function () {
+      a |= 0; a = (a + 0x6D2B79F5) | 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  function randn(rng) {
+    let u = 0, v = 0;
+    while (u === 0) u = rng();
+    while (v === 0) v = rng();
+    return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+  }
+
+  function generateDataset(kind, n, seed) {
+    const rng = mulberry32(seed);
+    const pts = new Float64Array(n * 2);
+    for (let i = 0; i < n; i++) {
+      let x = 0, y = 0;
+      if (kind === "hero") {
+        const u = rng();
+        if (u < 0.34) { x = -1.5 + 0.85 * randn(rng); y = -1.1 + 0.85 * randn(rng); }
+        else if (u < 0.68) { x = 1.4 + 0.90 * randn(rng); y = 0.9 + 0.90 * randn(rng); }
+        else if (u < 0.79) { x = -1.2 + 0.24 * randn(rng); y = 1.85 + 0.24 * randn(rng); }
+        else if (u < 0.90) { x = 0.45 + 0.22 * randn(rng); y = -2.15 + 0.22 * randn(rng); }
+        else { x = 2.25 + 0.20 * randn(rng); y = -1.55 + 0.20 * randn(rng); }
+      } else if (kind === "grid3x3") {
+        const b = i % 9, gx = (b % 3) - 1, gy = Math.floor(b / 3) - 1;
+        x = gx * 2.0 + 0.28 * randn(rng); y = gy * 2.0 + 0.28 * randn(rng);
+      } else if (kind === "twosizes") {
+        if (rng() < 0.12) { x = 3.6 + 0.22 * randn(rng); y = 0.22 * randn(rng); }
+        else { x = -0.5 + 1.05 * randn(rng); y = 1.05 * randn(rng); }
+      } else if (kind === "zipf") {
+        const u = rng();
+        if (u < 0.012) {
+          const q = Math.floor(rng() * 4);
+          x = (q & 1 ? 3.2 : -3.2) + 0.14 * randn(rng);
+          y = (q & 2 ? 3.2 : -3.2) + 0.14 * randn(rng);
+        } else {
+          const q = Math.floor(rng() * 4);
+          x = (q & 1 ? 0.85 : -0.85) + 0.26 * randn(rng);
+          y = (q & 2 ? 0.85 : -0.85) + 0.26 * randn(rng);
+        }
+      } else if (kind === "olympic") {
+        const c = [[-2.2, 0.3], [0, 0.3], [2.2, 0.3], [-1.1, -0.7], [1.1, -0.7]][i % 5];
+        const a = rng() * Math.PI * 2;
+        x = c[0] + Math.cos(a) + 0.06 * randn(rng); y = c[1] + Math.sin(a) + 0.06 * randn(rng);
+      } else if (kind === "spirals") {
+        const t = Math.sqrt(rng()) * 3 * Math.PI, arm = (i % 3) * (2 * Math.PI / 3);
+        const r = 3.2 * (t / (3 * Math.PI));
+        x = r * Math.cos(t + arm) + 0.11 * randn(rng); y = r * Math.sin(t + arm) + 0.11 * randn(rng);
+      } else if (kind === "rings") {
+        const rad = [0.9, 2.0, 3.2][i % 3], a = rng() * Math.PI * 2;
+        x = rad * Math.cos(a) + 0.11 * randn(rng); y = rad * Math.sin(a) + 0.11 * randn(rng);
+      } else if (kind === "heart") {
+        while (true) {
+          const px = rng() * 3 - 1.5, py = rng() * 3 - 1.25;
+          if (Math.pow(px * px + py * py - 1, 3) - px * px * py * py * py <= 0) {
+            x = px * 2.3; y = py * 2.3; break;
+          }
+        }
+      } else {
+        const e = Math.floor(rng() * 10), t = rng();
+        const a1 = Math.PI / 2 + e * Math.PI / 5, r1 = e % 2 === 0 ? 3.1 : 1.25;
+        const a2 = Math.PI / 2 + ((e + 1) % 10) * Math.PI / 5, r2 = (e + 1) % 2 === 0 ? 3.1 : 1.25;
+        x = r1 * Math.cos(a1) * (1 - t) + r2 * Math.cos(a2) * t + 0.08 * randn(rng);
+        y = r1 * Math.sin(a1) * (1 - t) + r2 * Math.sin(a2) * t + 0.08 * randn(rng);
+      }
+      pts[2 * i] = x; pts[2 * i + 1] = y;
+    }
+    // Shuffle rows deterministically:
+    for (let i = n - 1; i > 0; i--) {
+      const j = Math.floor(rng() * (i + 1));
+      const tx = pts[2 * i], ty = pts[2 * i + 1];
+      pts[2 * i] = pts[2 * j]; pts[2 * i + 1] = pts[2 * j + 1];
+      pts[2 * j] = tx; pts[2 * j + 1] = ty;
+    }
+    let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+    for (let i = 0; i < n; i++) {
+      x0 = Math.min(x0, pts[2 * i]); x1 = Math.max(x1, pts[2 * i]);
+      y0 = Math.min(y0, pts[2 * i + 1]); y1 = Math.max(y1, pts[2 * i + 1]);
+    }
+    const mx = (x1 - x0) * 0.08, my = (y1 - y0) * 0.08;
+    return { pts, bounds: [x0 - mx, x1 + mx, y0 - my, y1 + my], rng };
+  }
+
+  function evalMSE(pts, cFlat) {
+    const n = pts.length / 2, k = cFlat.length / 2;
+    let sum = 0;
+    for (let i = 0; i < n; i++) {
+      const x = pts[2 * i], y = pts[2 * i + 1];
+      let bd = Infinity;
+      for (let j = 0; j < k; j++) {
+        const dx = x - cFlat[2 * j], dy = y - cFlat[2 * j + 1];
+        const d2 = dx * dx + dy * dy;
+        if (d2 < bd) bd = d2;
+      }
+      sum += bd;
+    }
+    return sum / Math.max(1, n);
+  }
+
+  // Held-out Two-Part Description Length (`nats/pt`, D = 2):
+  // Prices Gaussian residual NLL + Voronoi index entropy `-ln pi_j` + codebook parameter overhead `K*(D+2)/2 * ln(1+N_obs) / N_obs`.
+  function evalMDL(pts, cFlat, nObs) {
+    const n = pts.length / 2, k = cFlat.length / 2;
+    if (k === 0 || n === 0) return null;
+    const cnt = new Int32Array(k), sse = new Float64Array(k);
+    let totSse = 0;
+    for (let i = 0; i < n; i++) {
+      const x = pts[2 * i], y = pts[2 * i + 1];
+      let best = 0, bd = Infinity;
+      for (let j = 0; j < k; j++) {
+        const dx = x - cFlat[2 * j], dy = y - cFlat[2 * j + 1];
+        const d2 = dx * dx + dy * dy;
+        if (d2 < bd) { bd = d2; best = j; }
+      }
+      cnt[best]++; sse[best] += bd; totSse += bd;
+    }
+    const sigBar2 = Math.max(1e-12, totSse / (2 * n));
+    let dataNats = 0;
+    for (let j = 0; j < k; j++) {
+      const nj = cnt[j];
+      if (nj === 0) continue;
+      const sig2 = (sse[j] / 2 + sigBar2) / (nj + 1);
+      const piJ = (nj + 0.5) / (n + 0.5 * k);
+      dataNats += nj * (Math.log(2 * Math.PI * sig2) + 0.5 * (sse[j] / (nj * sig2)) - Math.log(piJ));
+    }
+    const effN = Math.max(1, nObs);
+    const codebookNats = (k * 2.0 * Math.log(1 + effN)) / effN;
+    return dataNats / n + codebookNats;
+  }
+
+  // Exact JS port of ClusterBank & LaplaceEMeans (2D):
+  function makeBank(cx, cy, tRef, eps, rateInit) {
+    const q0 = eps * (cx * cx + cy * cy);
+    return {
+      tRef,
+      rateN: rateInit,
+      sn: new Float64Array(9).fill(eps),
+      sq: new Float64Array(9).fill(q0),
+      vw2: new Float64Array(5).fill(eps),
+      vs: Float64Array.from([eps * cx, eps * cy, eps * cx, eps * cy, eps * cx, eps * cy, eps * cx, eps * cy, eps * cx, eps * cy])
+    };
+  }
+
+  function rescaleBank(b, newT) {
+    const dt = newT - b.tRef;
+    if (dt === 0) return;
+    const dec = new Float64Array(9).fill(1);
+    for (let m = 0; m < 8; m++) {
+      dec[m] = Math.exp(-RATES[m] * dt);
+      b.sn[m] *= dec[m];
+      b.sq[m] *= dec[m];
+    }
+    b.rateN *= dec[3];
+    for (let r = 0; r < 4; r++) {
+      const m = VEC_IDX[r];
+      const d2 = m === 0 ? dec[0] * dec[0] : dec[m - 1];
+      b.vw2[r] *= d2;
+      b.vs[2 * r] *= dec[m];
+      b.vs[2 * r + 1] *= dec[m];
+    }
+    b.tRef = newT;
+  }
+
+  function accumImpulse(b, tau, sign, x, y) {
+    if (tau > b.tRef) rescaleBank(b, tau);
+    const dt = tau - b.tRef;
+    const q = x * x + y * y;
+    const sc = new Float64Array(9).fill(1);
+    for (let m = 0; m < 8; m++) {
+      sc[m] = Math.exp(RATES[m] * dt);
+      b.sn[m] += sign * sc[m];
+      b.sq[m] += sign * sc[m] * q;
+    }
+    b.rateN += sign * sc[3];
+    b.sn[8] += sign;
+    b.sq[8] += sign * q;
+    for (let r = 0; r < 5; r++) {
+      const m = VEC_IDX[r];
+      const s2 = m === 0 ? sc[0] * sc[0] : (m < 8 ? sc[m - 1] : 1);
+      b.vw2[r] += sign * s2;
+      b.vs[2 * r] += sign * sc[m] * x;
+      b.vs[2 * r + 1] += sign * sc[m] * y;
+    }
+  }
+
+  function readoutBank(b, tau) {
+    const dt = Math.max(0, tau - b.tRef);
+    const dec = new Float64Array(9).fill(1);
+    const nAt = new Float64Array(9);
+    for (let m = 0; m < 8; m++) { dec[m] = Math.exp(-RATES[m] * dt); nAt[m] = b.sn[m] * dec[m]; }
+    nAt[8] = b.sn[8];
+    const rateAt = Math.max(0, b.rateN * dec[3]);
+    const nEff = new Float64Array(5);
+    const rc = new Float64Array(10);
+    const valid = [false, false, false, false, false];
+    let first = -1, maxNeff = 0;
+    for (let r = 0; r < 5; r++) {
+      const m = VEC_IDX[r];
+      const d2 = m === 0 ? dec[0] * dec[0] : (m < 8 ? dec[m - 1] : 1);
+      const den = b.vw2[r] * d2;
+      if (nAt[m] > 1e-28 && den > 1e-28) nEff[r] = (nAt[m] * nAt[m]) / den;
+      if (b.sn[m] > 1e-28 && nAt[m] > 1e-28) {
+        rc[2 * r] = b.vs[2 * r] / b.sn[m];
+        rc[2 * r + 1] = b.vs[2 * r + 1] / b.sn[m];
+        valid[r] = true;
+        if (first < 0) first = r;
+        if (nEff[r] > maxNeff) maxNeff = nEff[r];
+      }
+    }
+    if (first < 0) return { x: 0, y: 0, nEff: 0, traceVar: 0, rateMass: rateAt };
+    if (maxNeff <= 3) {
+      return { x: rc[2 * first], y: rc[2 * first + 1], nEff: nEff[first], traceVar: 0, rateMass: rateAt };
+    }
+    let rVar = 4;
+    for (let r = 0; r < 5; r++) if (valid[r] && nEff[r] > 3) { rVar = r; break; }
+    const mv = VEC_IDX[rVar];
+    const cxv = rc[2 * rVar], cyv = rc[2 * rVar + 1];
+    const rawV = Math.max(0, b.sq[mv] / Math.max(1e-28, b.sn[mv]) - (cxv * cxv + cyv * cyv));
+    const traceVar = (nEff[rVar] / Math.max(1e-6, nEff[rVar] - 1)) * rawV;
+
+    let rStart = rVar;
+    for (let r = 0; r < 5; r++) if (valid[r] && nEff[r] >= 2) { rStart = r; break; }
+    let ox = rc[2 * rStart], oy = rc[2 * rStart + 1], curN = Math.max(1e-6, nEff[rStart]);
+    const zeta = 2.0; // 1 + sqrt(2 / D) for D = 2
+
+    if (traceVar > 0) {
+      for (let s = rStart + 1; s < 5; s++) {
+        if (!valid[s] || nEff[s] <= curN * 1.02) continue;
+        const ns = nEff[s], sx = rc[2 * s], sy = rc[2 * s + 1];
+        const diff2 = (ox - sx) * (ox - sx) + (oy - sy) * (oy - sy);
+        const vDelta = s === 4 ? traceVar * Math.max(0, 1 / curN - 1 / ns)
+          : traceVar * Math.pow(ns - curN, 2) / (curN * ns * (curN + ns));
+        const alpha = (diff2 <= zeta * vDelta || diff2 <= 1e-28) ? 0 : Math.min(1, Math.max(0, 1 - (zeta * vDelta) / diff2));
+        ox = (1 - alpha) * sx + alpha * ox;
+        oy = (1 - alpha) * sy + alpha * oy;
+        const vp = traceVar / curN, vs = traceVar / ns, cov = s === 4 ? vs : (2 * traceVar / (curN + ns));
+        const vn = (1 - alpha) * (1 - alpha) * vs + alpha * alpha * vp + 2 * alpha * (1 - alpha) * cov;
+        curN = Math.min(ns, Math.max(curN, traceVar / Math.max(1e-28, vn)));
+      }
+    }
+    return { x: ox, y: oy, nEff: curN, traceVar, rateMass: rateAt };
+  }
+
+  function mergeBankInto(dst, src) {
+    const tMax = Math.max(dst.tRef, src.tRef);
+    if (tMax > dst.tRef) rescaleBank(dst, tMax);
+    const dt = tMax - src.tRef;
+    const dec = new Float64Array(9).fill(1);
+    for (let m = 0; m < 8; m++) dec[m] = Math.exp(-RATES[m] * dt);
+    dst.rateN += src.rateN * dec[3];
+    for (let m = 0; m < 9; m++) {
+      dst.sn[m] += src.sn[m] * dec[m];
+      dst.sq[m] += src.sq[m] * dec[m];
+    }
+    for (let r = 0; r < 5; r++) {
+      const m = VEC_IDX[r];
+      const d2 = m === 0 ? dec[0] * dec[0] : (m < 8 ? dec[m - 1] : 1);
+      dst.vw2[r] += src.vw2[r] * d2;
+      dst.vs[2 * r] += src.vs[2 * r] * dec[m];
+      dst.vs[2 * r + 1] += src.vs[2 * r + 1] * dec[m];
+    }
+  }
+
+  function splitBankMomentPreserving(src, tau, cx, cy, ux, uy, delta, minRate) {
+    const base = {
+      tRef: src.tRef, rateN: src.rateN,
+      sn: new Float64Array(src.sn), sq: new Float64Array(src.sq),
+      vw2: new Float64Array(src.vw2), vs: new Float64Array(src.vs)
+    };
+    if (tau > base.tRef) rescaleBank(base, tau);
+    const dotCU = cx * ux + cy * uy;
+    const rHalf = Math.max(minRate, 0.5 * base.rateN);
+    const neg = { tRef: tau, rateN: rHalf, sn: new Float64Array(9), sq: new Float64Array(9), vw2: new Float64Array(5), vs: new Float64Array(10) };
+    const pos = { tRef: tau, rateN: rHalf, sn: new Float64Array(9), sq: new Float64Array(9), vw2: new Float64Array(5), vs: new Float64Array(10) };
+    for (let m = 0; m < 9; m++) {
+      const nh = 0.5 * base.sn[m], qh = 0.5 * base.sq[m], qs = base.sn[m] * delta * dotCU;
+      neg.sn[m] = nh; pos.sn[m] = nh;
+      neg.sq[m] = Math.max(0, qh - qs); pos.sq[m] = Math.max(0, qh + qs);
+    }
+    for (let r = 0; r < 5; r++) {
+      const m = VEC_IDX[r], nh = 0.5 * base.sn[m], wh = 0.5 * base.vw2[r];
+      neg.vw2[r] = wh; pos.vw2[r] = wh;
+      neg.vs[2 * r] = 0.5 * base.vs[2 * r] - nh * delta * ux;
+      neg.vs[2 * r + 1] = 0.5 * base.vs[2 * r + 1] - nh * delta * uy;
+      pos.vs[2 * r] = 0.5 * base.vs[2 * r] + nh * delta * ux;
+      pos.vs[2 * r + 1] = 0.5 * base.vs[2 * r + 1] + nh * delta * uy;
+    }
+    return [neg, pos];
+  }
+
+  function stepLaplaceBatch(state, chunk) {
+    const m = chunk.length / 2, K = state.banks.length;
+    const cFlat = new Float64Array(K * 2);
+    for (let j = 0; j < K; j++) {
+      const ro = readoutBank(state.banks[j], state.tau);
+      cFlat[2 * j] = ro.x; cFlat[2 * j + 1] = ro.y;
+    }
+    const labels = new Int32Array(m);
+    const bn = new Float64Array(K), farIdx = new Int32Array(K).fill(-1), farD2 = new Float64Array(K);
+    state.tau += m / K;
+    for (let i = 0; i < m; i++) {
+      const x = chunk[2 * i], y = chunk[2 * i + 1];
+      let best = 0, bd = Infinity;
+      for (let j = 0; j < K; j++) {
+        const dx = x - cFlat[2 * j], dy = y - cFlat[2 * j + 1], d2 = dx * dx + dy * dy;
+        if (d2 < bd) { bd = d2; best = j; }
+      }
+      labels[i] = best; bn[best]++;
+      if (bd > farD2[best] || farIdx[best] < 0) { farD2[best] = bd; farIdx[best] = i; }
+      accumImpulse(state.banks[best], state.tau, 1, x, y);
+    }
+
+    if (state.tau < 1.5 || K < 2 || (state.tau - (state.lastRevTau || 0)) < 1.0) return;
+    state.lastRevTau = state.tau;
+    const ros = state.banks.map(bk => readoutBank(bk, state.tau));
+    let totRate = 0; for (const r of ros) totRate += r.rateMass;
+    if (totRate <= 1e-12) return;
+    const meanRate = totRate / K;
+    const vics = [];
+    for (let j = 0; j < K; j++) {
+      let mNN = (j + 1) % K, minD2 = Infinity;
+      for (let u = 0; u < K; u++) if (u !== j) {
+        const dx = ros[j].x - ros[u].x, dy = ros[j].y - ros[u].y, d2 = dx * dx + dy * dy;
+        if (d2 < minD2) { minD2 = d2; mNN = u; }
+      }
+      const pv = Math.max(0, ros[j].rateMass) / totRate, pm = Math.max(0, ros[mNN].rateMass) / totRate;
+      const red = (pv + pm) > 1e-24 ? (pv * pm) / (pv + pm) : 0;
+      vics.push({ j, mNN, cost: red * minD2 });
+    }
+    vics.sort((a, b) => a.cost - b.cost);
+    const dons = [];
+    for (let j = 0; j < K; j++) {
+      if (bn[j] >= 1 && ros[j].nEff >= 4 && farIdx[j] >= 0) {
+        dons.push({ j, dist: (ros[j].rateMass / totRate) * ros[j].traceVar });
+      }
+    }
+    dons.sort((a, b) => b.dist - a.dist);
+    const dQuant = Math.min(2, Math.max(1, Math.ceil(Math.log2(K))));
+    const isoDrop = 2 / (Math.PI * dQuant);
+    const used = new Uint8Array(K);
+    let dc = 0;
+    for (let v = 0; v < Math.min(vics.length, Math.max(4, K >> 2)); v++) {
+      const { j: jv, mNN, cost } = vics[v];
+      if (used[jv] || used[mNN]) continue;
+      while (dc < dons.length && (used[dons[dc].j] || dons[dc].j === jv || dons[dc].j === mNN)) dc++;
+      if (dc >= dons.length) break;
+      const { j: jd, dist: donDist } = dons[dc];
+      const fi = farIdx[jd], cx = ros[jd].x, cy = ros[jd].y;
+      const dxF = chunk[2 * fi] - cx, dyF = chunk[2 * fi + 1] - cy;
+      const chordLen = Math.hypot(dxF, dyF);
+      if (chordLen <= 1e-12) { dc++; continue; }
+      let px = 0, py = 0, np = 0, nx = 0, ny = 0, nn = 0, errB = 0;
+      for (let i = 0; i < m; i++) {
+        if (labels[i] !== jd || i === fi) continue;
+        const x = chunk[2 * i], y = chunk[2 * i + 1];
+        errB += (x - cx) * (x - cx) + (y - cy) * (y - cy);
+        if ((x - cx) * dxF + (y - cy) * dyF >= 0) { px += x; py += y; np++; }
+        else { nx += x; ny += y; nn++; }
+      }
+      const mLoo = Math.max(0, bn[jd] - 1);
+      let empDrop = 0, ux = dxF / chordLen, uy = dyF / chordLen;
+      if (mLoo >= 6 && errB > 1e-18 && np >= 1 && nn >= 1) {
+        px /= np; py /= np; nx /= nn; ny /= nn;
+        const drop = ((np * nn) / (np + nn)) * ((px - nx) * (px - nx) + (py - ny) * (py - ny)) / errB;
+        empDrop = Math.max(0, drop - 2 / mLoo);
+        const sep = Math.hypot(px - nx, py - ny);
+        if (empDrop > isoDrop && sep > 1e-12) { ux = (px - nx) / sep; uy = (py - ny) / sep; }
+      }
+      const effDrop = Math.max(isoDrop, empDrop);
+      if (effDrop * donDist > 4 * cost) {
+        if (state.banks[jv].sn[8] > 1e-6) mergeBankInto(state.banks[mNN], state.banks[jv]);
+        const delta = Math.max(1e-6, Math.min(0.5 * chordLen, 0.5 * Math.sqrt(effDrop * ros[jd].traceVar)));
+        const [bNeg, bPos] = splitBankMomentPreserving(state.banks[jd], state.tau, cx, cy, ux, uy, delta, 0.35 * meanRate);
+        state.banks[jd] = bNeg; state.banks[jv] = bPos;
+        used[jv] = 1; used[mNN] = 1; used[jd] = 1; dc++;
+      } else {
+        break;
+      }
+    }
+  }
+
+  function notCoveredByNeighbor(ros, jParent, nSub, nSampleParent, sxSub, sySub, qSub) {
+    if (ros.length <= 1 || nSub < 1 || nSampleParent <= 0) return true;
+    let nTot = 0;
+    for (let m = 0; m < ros.length; m++) nTot += Math.max(0, ros[m].nEff);
+    if (nTot <= 1) return true;
+    const cx = sxSub / nSub, cy = sySub / nSub;
+    const pParent = Math.max(1e-6, ros[jParent].nEff / nTot);
+    const pSub = Math.max(1e-6, (nSub / nSampleParent) * pParent);
+    const paramPen = 2.0 * Math.log(1 + nSub);
+
+    for (let m = 0; m < ros.length; m++) {
+      if (m === jParent || ros[m].nEff < 16 || ros[m].traceVar <= ros[jParent].traceVar) continue;
+      const d2Sub = Math.pow(cx - ros[m].x, 2) + Math.pow(cy - ros[m].y, 2);
+      const d2Par = Math.pow(ros[jParent].x - ros[m].x, 2) + Math.pow(ros[jParent].y - ros[m].y, 2);
+      if (d2Sub >= d2Par) continue;
+      const sigM2 = ros[m].traceVar / 2;
+      const klLoc = 0.5 * (d2Sub / sigM2);
+      const pM = Math.max(pSub, ros[m].nEff / nTot);
+      const netVsM = nSub * (klLoc - Math.log(pM / pSub)) - paramPen;
+      if (netVsM <= 0) return false;
+    }
+    return true;
+  }
+
+  function invalidateStolenCands(state, xNew, yNew) {
+    for (let m = 0; m < state.cands.length; m++) {
+      const cd = state.cands[m];
+      if (!cd || cd.np < 1) continue;
+      const px = cd.spx / cd.np, py = cd.spy / cd.np;
+      const ro = readoutBank(state.banks[m], state.tau);
+      const dNew = Math.pow(px - xNew, 2) + Math.pow(py - yNew, 2);
+      const dOwn = Math.pow(px - ro.x, 2) + Math.pow(py - ro.y, 2);
+      if (dNew < dOwn) state.cands[m] = null;
+    }
+  }
+
+  function stepLaplaceEmergentBatch(state, chunk, kMax) {
+    const m = chunk.length / 2;
+    if (m === 0) return;
+    if (state.banks.length === 0) {
+      state.banks.push(makeBank(chunk[0], chunk[1], state.tau, 1e-10, 0.5));
+    }
+    const K = state.banks.length;
+    const cFlat = new Float64Array(K * 2);
+    for (let j = 0; j < K; j++) {
+      const ro = readoutBank(state.banks[j], state.tau);
+      cFlat[2 * j] = ro.x; cFlat[2 * j + 1] = ro.y;
+    }
+    if (!state.cands) state.cands = [];
+    while (state.cands.length < K) state.cands.push(null);
+
+    const labels = new Int32Array(m);
+    let bn = new Float64Array(K);
+    const farIdx = new Int32Array(K).fill(-1), farD2 = new Float64Array(K);
+    state.tau += m / Math.max(1, K);
+    for (let i = 0; i < m; i++) {
+      const x = chunk[2 * i], y = chunk[2 * i + 1];
+      let best = 0, bd = Infinity;
+      for (let j = 0; j < K; j++) {
+        const dx = x - cFlat[2 * j], dy = y - cFlat[2 * j + 1], d2 = dx * dx + dy * dy;
+        if (d2 < bd) { bd = d2; best = j; }
+      }
+      labels[i] = best; bn[best]++;
+      if (bd > farD2[best] || farIdx[best] < 0) { farD2[best] = bd; farIdx[best] = i; }
+      accumImpulse(state.banks[best], state.tau, 1, x, y);
+
+      const cd = state.cands[best];
+      if (cd) {
+        const z = (x - cd.cx) * cd.ux + (y - cd.cy) * cd.uy;
+        const qPt = x * x + y * y;
+        if (z < cd.thr) { cd.nn++; cd.z1n += z; cd.z2n += z * z; cd.snx += x; cd.sny += y; cd.qn += qPt; }
+        else { cd.np++; cd.z1p += z; cd.z2p += z * z; cd.spx += x; cd.spy += y; cd.qp += qPt; }
+      }
+    }
+
+    const dfParam = 1.5; // (D + 1) / 2 for D = 2
+    let ros = state.banks.map(bk => readoutBank(bk, state.tau));
+    let splitPair = null;
+
+    // 0. Check persistent causal candidate splits (`O(D)` per cluster, exogenous hyperplane):
+    if (state.banks.length < kMax) {
+      let bestPromo = null;
+      for (let j = 0; j < state.banks.length; j++) {
+        const cd = state.cands[j];
+        if (!cd) continue;
+        const nt = cd.nn + cd.np;
+        if (cd.nn >= 4 && cd.np >= 4) {
+          const pn = cd.nn / nt, pp = cd.np / nt;
+          const zm = (cd.z1n + cd.z1p) / nt;
+          const vz = Math.max(1e-24, (cd.z2n + cd.z2p) / nt - zm * zm);
+          const znM = cd.z1n / cd.nn, zpM = cd.z1p / cd.np;
+          const vPool = Math.max(1e-24, vz - pn * pp * (zpM - znM) * (zpM - znM));
+          const ssN = Math.max(0, cd.z2n - cd.nn * znM * znM);
+          const ssP = Math.max(0, cd.z2p - cd.np * zpM * zpM);
+          const vnUip = (ssN + vPool) / cd.nn, vpUip = (ssP + vPool) / cd.np;
+          const gZ = 0.5 * (Math.log(vz) - pn * Math.log(vnUip) - pp * Math.log(vpUip)) - 0.5 * (1 / cd.nn + 1 / cd.np);
+          const ent = -pn * Math.log(pn) - pp * Math.log(pp);
+          const net = nt * (gZ - ent) - 2.0 * Math.log(1 + nt);
+          if (net > 0 && notCoveredByNeighbor(ros, j, cd.nn, nt, cd.snx, cd.sny, cd.qn) && notCoveredByNeighbor(ros, j, cd.np, nt, cd.spx, cd.spy, cd.qp) && (!bestPromo || net > bestPromo.net)) {
+            bestPromo = { net, j, cd };
+          } else if (net > 0 || (nt >= 64 && net <= 0)) {
+            state.cands[j] = null;
+          }
+        } else if (nt >= 96 && (cd.nn === 0 || cd.np === 0)) {
+          state.cands[j] = null;
+        }
+      }
+      if (bestPromo) {
+        const { j, cd } = bestPromo;
+        const bNeg = { tRef: state.tau, rateN: cd.nn, sn: new Float64Array(9).fill(cd.nn), sq: new Float64Array(9).fill(cd.qn), vw2: new Float64Array(5).fill(cd.nn), vs: new Float64Array(10) };
+        const bPos = { tRef: state.tau, rateN: cd.np, sn: new Float64Array(9).fill(cd.np), sq: new Float64Array(9).fill(cd.qp), vw2: new Float64Array(5).fill(cd.np), vs: new Float64Array(10) };
+        for (let r = 0; r < 5; r++) {
+          bNeg.vs[2 * r] = cd.snx; bNeg.vs[2 * r + 1] = cd.sny;
+          bPos.vs[2 * r] = cd.spx; bPos.vs[2 * r + 1] = cd.spy;
+        }
+        state.banks[j] = bNeg; state.cands[j] = null;
+        state.banks.push(bPos); state.cands.push(null);
+        invalidateStolenCands(state, cd.spx / cd.np, cd.spy / cd.np);
+        splitPair = [j, state.banks.length - 1];
+      }
+    }
+
+    // 1. Scale-free 4-direction Gram-Schmidt subspace + 1D valley MDL Split (`Delta K = +1`):
+    if (!splitPair && state.banks.length < kMax) {
+      let bestSplit = null;
+      for (let j = 0; j < state.banks.length; j++) {
+        if (bn[j] < 10 || ros[j].nEff < 10 || farIdx[j] < 0) continue;
+        const fi1 = farIdx[j], cx = ros[j].x, cy = ros[j].y;
+        const dx1 = chunk[2 * fi1] - cx, dy1 = chunk[2 * fi1 + 1] - cy;
+        const l1 = Math.hypot(dx1, dy1);
+        if (l1 <= 1e-12) continue;
+        const u1x = dx1 / l1, u1y = dy1 / l1;
+
+        let orthI = -1, maxOrth2 = 0;
+        for (let i = 0; i < m; i++) {
+          if (labels[i] !== j || i === fi1) continue;
+          const dx = chunk[2 * i] - cx, dy = chunk[2 * i + 1] - cy;
+          const dot = dx * u1x + dy * u1y;
+          const o2 = Math.max(0, dx * dx + dy * dy - dot * dot);
+          if (o2 > maxOrth2) { maxOrth2 = o2; orthI = i; }
+        }
+
+        const dirs = [[u1x, u1y]];
+        if (orthI >= 0 && maxOrth2 > 1e-24) {
+          const dxo = chunk[2 * orthI] - cx, dyo = chunk[2 * orthI + 1] - cy;
+          const dot = dxo * u1x + dyo * u1y;
+          const invL2 = 1 / Math.sqrt(maxOrth2);
+          const u2x = (dxo - dot * u1x) * invL2, u2y = (dyo - dot * u1y) * invL2;
+          const s2 = Math.SQRT1_2;
+          dirs.push([u2x, u2y], [s2 * (u1x + u2x), s2 * (u1y + u2y)], [s2 * (u1x - u2x), s2 * (u1y - u2y)]);
+        }
+
+        const remIdx = [];
+        for (let i = 0; i < m; i++) if (labels[i] === j && i !== fi1 && i !== orthI) remIdx.push(i);
+        const mRem = remIdx.length;
+        const minLeaf = 4;
+        if (mRem < 2 * minLeaf) continue;
+        const mdlPen = 2.0 * Math.log(1 + mRem) + Math.log(dirs.length * mRem);
+
+        const pz = new Float64Array(mRem + 1), pz2 = new Float64Array(mRem + 1);
+        for (const [ux, uy] of dirs) {
+          const proj = new Array(mRem);
+          let zSum = 0, zSq = 0;
+          for (let r = 0; r < mRem; r++) {
+            const idxPt = remIdx[r];
+            const z = (chunk[2 * idxPt] - cx) * ux + (chunk[2 * idxPt + 1] - cy) * uy;
+            zSum += z; zSq += z * z;
+            proj[r] = [z, idxPt];
+          }
+          const zm = zSum / mRem, vz = zSq / mRem - zm * zm;
+          if (vz <= 1e-24) continue;
+          proj.sort((a, b) => a[0] - b[0]);
+          for (let r = 0; r < mRem; r++) {
+            const z = proj[r][0];
+            pz[r + 1] = pz[r] + z;
+            pz2[r + 1] = pz2[r] + z * z;
+          }
+
+          let bestK = -1, bestNet = 0;
+          for (let kCut = minLeaf; kCut <= mRem - minLeaf; kCut++) {
+            if (proj[kCut][0] <= proj[kCut - 1][0] + 1e-12) continue;
+            const nn = kCut, np = mRem - kCut, pn = nn / mRem, pp = np / mRem;
+            const znM = pz[kCut] / nn, zpM = (pz[mRem] - pz[kCut]) / np;
+            const vBet = pn * pp * (zpM - znM) * (zpM - znM);
+            const vPool = Math.max(1e-24, vz - vBet);
+            const ssN = Math.max(0, pz2[kCut] - nn * znM * znM);
+            const ssP = Math.max(0, (pz2[mRem] - pz2[kCut]) - np * zpM * zpM);
+            const vnUip = (ssN + vPool) / nn, vpUip = (ssP + vPool) / np;
+            const bart = 0.5 * (1 / nn + 1 / np);
+            const gZ = 0.5 * (Math.log(vz) - pn * Math.log(vnUip) - pp * Math.log(vpUip)) - bart;
+            const ent = -pn * Math.log(pn) - pp * Math.log(pp);
+            const net = mRem * (gZ - ent) - mdlPen;
+            if (net > bestNet) { bestNet = net; bestK = kCut; }
+          }
+
+          if (bestK >= 0 && (!bestSplit || bestNet > bestSplit.netNats)) {
+            const thr = 0.5 * (proj[bestK - 1][0] + proj[bestK][0]);
+            let snx = 0, sny = 0, qn = 0, cntN = 0, spx = 0, spy = 0, qp = 0, cntP = 0;
+            for (let r = 0; r < mRem; r++) {
+              const [z, idxPt] = proj[r];
+              const x = chunk[2 * idxPt], y = chunk[2 * idxPt + 1], qPt = x * x + y * y;
+              if (z < thr) { snx += x; sny += y; qn += qPt; cntN++; }
+              else { spx += x; spy += y; qp += qPt; cntP++; }
+            }
+            for (const anc of (orthI >= 0 ? [fi1, orthI] : [fi1])) {
+              const x = chunk[2 * anc], y = chunk[2 * anc + 1], qPt = x * x + y * y;
+              const za = (x - cx) * ux + (y - cy) * uy;
+              if (za < thr) { snx += x; sny += y; qn += qPt; cntN++; }
+              else { spx += x; spy += y; qp += qPt; cntP++; }
+            }
+            if (notCoveredByNeighbor(ros, j, cntN, cntN + cntP, snx, sny, qn) && notCoveredByNeighbor(ros, j, cntP, cntN + cntP, spx, spy, qp)) {
+              bestSplit = { netNats: bestNet, j, snx, sny, qn, cntN, spx, spy, qp, cntP };
+            }
+          }
+        }
+      }
+      if (bestSplit) {
+        const bNeg = { tRef: state.tau, rateN: bestSplit.cntN, sn: new Float64Array(9).fill(bestSplit.cntN), sq: new Float64Array(9).fill(bestSplit.qn), vw2: new Float64Array(5).fill(bestSplit.cntN), vs: new Float64Array(10) };
+        const bPos = { tRef: state.tau, rateN: bestSplit.cntP, sn: new Float64Array(9).fill(bestSplit.cntP), sq: new Float64Array(9).fill(bestSplit.qp), vw2: new Float64Array(5).fill(bestSplit.cntP), vs: new Float64Array(10) };
+        for (let r = 0; r < 5; r++) {
+          bNeg.vs[2 * r] = bestSplit.snx; bNeg.vs[2 * r + 1] = bestSplit.sny;
+          bPos.vs[2 * r] = bestSplit.spx; bPos.vs[2 * r + 1] = bestSplit.spy;
+        }
+        state.banks[bestSplit.j] = bNeg; state.cands[bestSplit.j] = null;
+        state.banks.push(bPos); state.cands.push(null);
+        invalidateStolenCands(state, bestSplit.spx / bestSplit.cntP, bestSplit.spy / bestSplit.cntP);
+        splitPair = [bestSplit.j, state.banks.length - 1];
+      } else {
+        // Seed fresh causal candidate split at `0.5 * ||x_far - c_j||` for mature clusters:
+        for (let j = 0; j < state.banks.length; j++) {
+          if (ros[j].nEff >= 12 && farIdx[j] >= 0) {
+            const fi = farIdx[j], cx = ros[j].x, cy = ros[j].y;
+            const dx = chunk[2 * fi] - cx, dy = chunk[2 * fi + 1] - cy;
+            const len = Math.hypot(dx, dy);
+            if (len > 1e-12 && (!state.cands[j] || (len > 3.0 * state.cands[j].thr && state.cands[j].np < 4))) {
+              state.cands[j] = { cx, cy, ux: dx / len, uy: dy / len, thr: 0.5 * len, nn: 0, z1n: 0, z2n: 0, snx: 0, sny: 0, qn: 0, np: 0, z1p: 0, z2p: 0, spx: 0, spy: 0, qp: 0 };
+            }
+          }
+        }
+      }
+    }
+
+    // 2. Conjugate scale-free Ward Re-Merge (`Delta K = -1`) along 1D connecting chord `u`:
+    if (state.banks.length >= 2 && state.tau >= 4.0) {
+      if (splitPair) {
+        ros = state.banks.map(bk => readoutBank(bk, state.tau));
+        const K2 = ros.length;
+        const bn2 = new Float64Array(K2);
+        for (let i = 0; i < m; i++) {
+          const x = chunk[2 * i], y = chunk[2 * i + 1];
+          let best = 0, bd = Infinity;
+          for (let j = 0; j < K2; j++) {
+            const dx = x - ros[j].x, dy = y - ros[j].y, d2 = dx * dx + dy * dy;
+            if (d2 < bd) { bd = d2; best = j; }
+          }
+          labels[i] = best; bn2[best]++;
+        }
+        bn = bn2;
+      }
+      let bestMerge = null;
+      for (let j = 0; j < state.banks.length; j++) {
+        if (ros[j].nEff < 4 || ros[j].traceVar <= 1e-24) continue;
+        const sj2IsoRaw = Math.max(1e-24, ros[j].traceVar / 2);
+        for (let u = j + 1; u < state.banks.length; u++) {
+          if (splitPair && ((j === splitPair[0] && u === splitPair[1]) || (j !== splitPair[0] && j !== splitPair[1] && u !== splitPair[0] && u !== splitPair[1]))) continue;
+          if (ros[u].nEff < 4 || ros[u].traceVar <= 1e-24) continue;
+          const su2IsoRaw = Math.max(1e-24, ros[u].traceVar / 2);
+          let sj2Iso = sj2IsoRaw, su2Iso = su2IsoRaw;
+          const dxC = ros[u].x - ros[j].x, dyC = ros[u].y - ros[j].y;
+          const d2 = dxC * dxC + dyC * dyC;
+          const nj = ros[j].nEff, nu = ros[u].nEff, nt = nj + nu;
+          const pj = Math.min(1 - 1e-9, Math.max(1e-9, nj / nt)), pu = 1 - pj;
+
+          let sj2U = sj2Iso, su2U = su2Iso;
+          if (d2 > 1e-24 && bn[j] >= 4 && bn[u] >= 4) {
+            const invL = 1 / Math.sqrt(d2);
+            let m1J = 0, m2J = 0, cJ = 0, m1U = 0, m2U = 0, cU = 0;
+            let outJ = 0, nOutJ = 0, outU = 0, nOutU = 0;
+            for (let i = 0; i < m; i++) {
+              if (labels[i] === j) {
+                const dx = chunk[2 * i] - ros[j].x, dy = chunk[2 * i + 1] - ros[j].y;
+                const z = (dx * dxC + dy * dyC) * invL;
+                m1J += z; m2J += z * z; cJ++;
+                if (z <= 0) { outJ += (dx * dx + dy * dy) / 2; nOutJ++; }
+              } else if (labels[i] === u) {
+                const dx = chunk[2 * i] - ros[u].x, dy = chunk[2 * i + 1] - ros[u].y;
+                const z = (dx * dxC + dy * dyC) * invL;
+                m1U += z; m2U += z * z; cU++;
+                if (z >= 0) { outU += (dx * dx + dy * dy) / 2; nOutU++; }
+              }
+            }
+            if (cJ >= 4) sj2U = Math.min(sj2IsoRaw, Math.max(1e-24, (m2J - (m1J * m1J) / cJ) / (cJ - 1)));
+            if (cU >= 4) su2U = Math.min(su2IsoRaw, Math.max(1e-24, (m2U - (m1U * m1U) / cU) / (cU - 1)));
+            if (nOutJ >= 3) sj2Iso = Math.min(sj2IsoRaw, Math.max(1e-24, outJ / nOutJ));
+            if (nOutU >= 3) su2Iso = Math.min(su2IsoRaw, Math.max(1e-24, outU / nOutU));
+          }
+          const sBarU = pj * sj2U + pu * su2U;
+          const sBarIso = pj * sj2Iso + pu * su2Iso;
+          const chordNats = 0.5 * nt * Math.log(1 + (pj * pu * d2) / sBarU);
+          const scaleNats = nt * Math.max(0, Math.log(sBarIso) - pj * Math.log(sj2Iso) - pu * Math.log(su2Iso));
+          const distCost = chordNats + scaleNats;
+          const hMerge = -pj * Math.log(pj) - pu * Math.log(pu);
+          const savedNats = nt * hMerge + dfParam * (Math.log(1 + nj) + Math.log(1 + nu) - Math.log(1 + nt));
+          if (distCost < savedNats && (!bestMerge || (distCost - savedNats) < bestMerge.net)) {
+            bestMerge = { net: distCost - savedNats, j, u };
+          }
+        }
+      }
+      if (bestMerge) {
+        const rem = state.banks.splice(bestMerge.u, 1)[0];
+        state.cands.splice(bestMerge.u, 1);
+        mergeBankInto(state.banks[bestMerge.j], rem);
+        state.cands[bestMerge.j] = null;
+      }
+    }
+  }
+
+  function hiDPI(id) {
+    const cv = document.getElementById(id), w = cv.width, h = cv.height;
+    cv.width = w * 2; cv.height = h * 2;
+    const ctx = cv.getContext("2d"); ctx.scale(2, 2);
+    return { cv, ctx, w, h };
+  }
+  const P_LLOYD = hiDPI("cvLloyd"), P_FAIR = hiDPI("cvFair"), P_LAP = hiDPI("cvLap"), P_MSE = hiDPI("cvMse");
+
+  function cellEdges(S, x0, x1, y0, y1) {
+    const out = [], k = S.length;
+    for (let a = 0; a < k; a++) {
+      let poly = [[x0, y0, -1], [x1, y0, -1], [x1, y1, -1], [x0, y1, -1]];
+      for (let b = 0; b < k && poly.length; b++) {
+        const nx = S[b][0] - S[a][0], ny = S[b][1] - S[a][1];
+        if (b === a || nx * nx + ny * ny < 1e-9) continue;
+        const mx = 0.5 * (S[a][0] + S[b][0]), my = 0.5 * (S[a][1] + S[b][1]);
+        const q = [], m = poly.length;
+        for (let i = 0; i < m; i++) {
+          const A = poly[i], B = poly[(i + 1) % m];
+          const da = (A[0] - mx) * nx + (A[1] - my) * ny, db = (B[0] - mx) * nx + (B[1] - my) * ny;
+          if (da <= 0) q.push(A);
+          if ((da <= 0) !== (db <= 0)) {
+            const r = da / (da - db);
+            q.push([A[0] + (B[0] - A[0]) * r, A[1] + (B[1] - A[1]) * r, da <= 0 ? b : A[2]]);
+          }
+        }
+        poly = q;
+      }
+      for (let i = 0; i < poly.length; i++) {
+        if (poly[i][2] <= a) continue;
+        const B = poly[(i + 1) % poly.length];
+        out.push([poly[i][0], poly[i][1], B[0], B[1]]);
+      }
+    }
+    return out;
+  }
+
+  let SIM = null, curF = 0, playing = true, timer = null;
+
+  function runSimulation() {
+    const kind = document.getElementById("selDataset").value;
+    const mode = document.getElementById("selMode").value;
+    const isEmergent = mode === "emergent";
+    document.getElementById("lblKText").innerHTML = isEmergent ? "Baseline <code>K</code> (Lloyd / e-means)" : "Clusters <code>K</code>";
+    const K = parseInt(document.getElementById("rngK").value, 10);
+    const N = parseInt(document.getElementById("selN").value, 10);
+    const B = parseInt(document.getElementById("selB").value, 10);
+    const passes = parseFloat(document.getElementById("selPasses").value);
+    const initMode = document.getElementById("selInit").value;
+    const seed = parseInt(document.getElementById("inpSeed").value, 10) || 42;
+
+    const { pts, bounds, rng } = generateDataset(kind, N, seed);
+    const testPts = generateDataset(kind, 1500, seed + 999).pts;
+    const visPts = pts.slice(0, Math.min(pts.length, 3200));
+
+    const initC = new Float64Array(K * 2);
+    if (initMode === "corner") {
+      const cx = bounds[0] + 0.18 * (bounds[1] - bounds[0]);
+      const cy = bounds[2] + 0.18 * (bounds[3] - bounds[2]);
+      for (let j = 0; j < K; j++) {
+        initC[2 * j] = cx + 0.18 * randn(rng);
+        initC[2 * j + 1] = cy + 0.18 * randn(rng);
+      }
+    } else {
+      for (let j = 0; j < K; j++) {
+        initC[2 * j] = pts[2 * j]; initC[2 * j + 1] = pts[2 * j + 1];
+      }
+    }
+
+    // Initialize the 3 learners:
+    const lloydC = new Float64Array(initC);
+    const totalSteps = Math.max(1, Math.round((N * passes) / B));
+    const alpha0 = Math.min(1.0, Math.max(1e-4, 0.824 * Math.pow(K, -0.46) * Math.pow(B, 0.90) * Math.pow(N, -0.45) * Math.pow(passes, -0.11)));
+    const fairN = new Float64Array(K).fill(1e-10), fairS = new Float64Array(K * 2);
+    for (let j = 0; j < K; j++) { fairS[2 * j] = 1e-10 * initC[2 * j]; fairS[2 * j + 1] = 1e-10 * initC[2 * j + 1]; }
+
+    const lapState = {
+      tau: 0,
+      lastRevTau: 0,
+      banks: isEmergent
+        ? []
+        : Array.from({ length: K }, (_, j) => makeBank(initC[2 * j], initC[2 * j + 1], 0, 1e-10, 0.5))
+    };
+
+    const frames = [];
+    frames.push({ pass: 0, lloydC: null, fairC: null, lapC: null, lMse: null, fMse: null, oMse: null, lMdl: null, fMdl: null, oMdl: null });
+
+    let lloydEp = 0;
+    let lockedLapC = null, lockedOMse = null, lockedOMdl = null;
+    for (let step = 1; step <= totalSteps; step++) {
+      const start = ((step - 1) * B) % N;
+      const chunk = new Float64Array(B * 2);
+      for (let i = 0; i < B; i++) {
+        const idx = (start + i) % N;
+        chunk[2 * i] = pts[2 * idx]; chunk[2 * i + 1] = pts[2 * idx + 1];
+      }
+      const pass = (step * B) / N;
+      const nObsDistinct = Math.min(N, step * B);
+
+      // 1. Step e-means:
+      const fCur = new Float64Array(K * 2);
+      for (let j = 0; j < K; j++) { fCur[2 * j] = fairS[2 * j] / fairN[j]; fCur[2 * j + 1] = fairS[2 * j + 1] / fairN[j]; }
+      const bn = new Float64Array(K), bs = new Float64Array(K * 2);
+      for (let i = 0; i < B; i++) {
+        const x = chunk[2 * i], y = chunk[2 * i + 1];
+        let best = 0, bd = Infinity;
+        for (let j = 0; j < K; j++) {
+          const dx = x - fCur[2 * j], dy = y - fCur[2 * j + 1], d2 = dx * dx + dy * dy;
+          if (d2 < bd) { bd = d2; best = j; }
+        }
+        bn[best]++; bs[2 * best] += x; bs[2 * best + 1] += y;
+      }
+      const ratio = Math.min(1, (step - 1) / totalSteps);
+      const alpha = alpha0 * (0.1 + 0.9 * 0.5 * (1 + Math.cos(Math.PI * ratio)));
+      for (let j = 0; j < K; j++) {
+        fairN[j] = (1 - alpha) * fairN[j] + alpha * bn[j];
+        fairS[2 * j] = (1 - alpha) * fairS[2 * j] + alpha * bs[2 * j];
+        fairS[2 * j + 1] = (1 - alpha) * fairS[2 * j + 1] + alpha * bs[2 * j + 1];
+      }
+      if (step % 5 === 0) {
+        let sumN = 0; for (let j = 0; j < K; j++) sumN += fairN[j];
+        const th = 0.1 * (sumN / K), dead = [], alive = [];
+        for (let j = 0; j < K; j++) (fairN[j] < th ? dead : alive).push(j);
+        for (const jd of dead) {
+          if (!alive.length) break;
+          let tw = 0; for (const ja of alive) tw += fairN[ja];
+          let r = rng() * tw, pick = alive.length - 1;
+          for (let q = 0; q < alive.length; q++) { r -= fairN[alive[q]]; if (r <= 0) { pick = q; break; } }
+          const jdon = alive.splice(pick, 1)[0];
+          const hn = 0.5 * fairN[jdon], cx = fairS[2 * jdon] / fairN[jdon], cy = fairS[2 * jdon + 1] / fairN[jdon];
+          fairN[jd] = hn; fairN[jdon] = hn;
+          fairS[2 * jd] = hn * cx * 1.0078; fairS[2 * jd + 1] = hn * cy * 0.9922;
+          fairS[2 * jdon] = hn * cx * 0.9922; fairS[2 * jdon + 1] = hn * cy * 1.0078;
+        }
+      }
+
+      // 2. Step l-means ONLY during Pass 1 (`pass <= 1.0`), then halt!
+      if (pass <= 1.0 + 1e-9) {
+        if (isEmergent) stepLaplaceEmergentBatch(lapState, chunk, 80);
+        else stepLaplaceBatch(lapState, chunk);
+      }
+
+      // 3. Step Lloyd ONLY at completed integer passes (`1, 2, 3, ...`):
+      if (Math.floor(pass + 1e-9) > lloydEp) {
+        lloydEp = Math.floor(pass + 1e-9);
+        const sums = new Float64Array(K * 2), cnt = new Float64Array(K);
+        for (let i = 0; i < N; i++) {
+          const x = pts[2 * i], y = pts[2 * i + 1];
+          let best = 0, bd = Infinity;
+          for (let j = 0; j < K; j++) {
+            const dx = x - lloydC[2 * j], dy = y - lloydC[2 * j + 1], d2 = dx * dx + dy * dy;
+            if (d2 < bd) { bd = d2; best = j; }
+          }
+          cnt[best]++; sums[2 * best] += x; sums[2 * best + 1] += y;
+        }
+        for (let j = 0; j < K; j++) if (cnt[j] > 0) { lloydC[2 * j] = sums[2 * j] / cnt[j]; lloydC[2 * j + 1] = sums[2 * j + 1] / cnt[j]; }
+      }
+
+      const fc = new Float64Array(K * 2);
+      for (let j = 0; j < K; j++) {
+        fc[2 * j] = fairS[2 * j] / fairN[j]; fc[2 * j + 1] = fairS[2 * j + 1] / fairN[j];
+      }
+      let lc = lockedLapC, omse = lockedOMse, omdl = lockedOMdl;
+      if (!lc) {
+        const curK = lapState.banks.length;
+        lc = new Float64Array(curK * 2);
+        for (let j = 0; j < curK; j++) {
+          const ro = readoutBank(lapState.banks[j], lapState.tau);
+          lc[2 * j] = ro.x; lc[2 * j + 1] = ro.y;
+        }
+        omse = evalMSE(testPts, lc);
+        omdl = evalMDL(testPts, lc, nObsDistinct);
+        if (pass >= 1.0 - 1e-9) { lockedLapC = lc; lockedOMse = omse; lockedOMdl = omdl; }
+      }
+
+      frames.push({
+        pass,
+        lloydC: lloydEp >= 1 ? new Float64Array(lloydC) : null,
+        fairC: fc,
+        lapC: lc,
+        lMse: lloydEp >= 1 ? evalMSE(testPts, lloydC) : null,
+        fMse: evalMSE(testPts, fc),
+        oMse: omse,
+        lMdl: lloydEp >= 1 ? evalMDL(testPts, lloydC, N) : null,
+        fMdl: evalMDL(testPts, fc, nObsDistinct),
+        oMdl: omdl
+      });
+    }
+
+    // Build live Abelian unlearning index on `visPts` for interactive brush deletion:
+    const finalLapC = frames[frames.length - 1].lapC;
+    const lapK = Math.max(1, finalLapC.length / 2);
+    const nVis = visPts.length / 2;
+    const visActive = new Uint8Array(nVis).fill(1);
+    const visOwner = new Int32Array(nVis);
+    const visTau = new Float64Array(nVis);
+    const unlearnBanks = Array.from({ length: lapK }, (_, j) => makeBank(finalLapC[2 * j], finalLapC[2 * j + 1], 0, 1e-6, 0.1));
+    for (let i = 0; i < nVis; i++) {
+      const x = visPts[2 * i], y = visPts[2 * i + 1];
+      let best = 0, bd = Infinity;
+      for (let j = 0; j < lapK; j++) {
+        const dx = x - finalLapC[2 * j], dy = y - finalLapC[2 * j + 1], d2 = dx * dx + dy * dy;
+        if (d2 < bd) { bd = d2; best = j; }
+      }
+      visOwner[i] = best;
+      visTau[i] = (i + 1) / lapK;
+      accumImpulse(unlearnBanks[best], visTau[i], 1, x, y);
+    }
+
+    SIM = { bounds, visPts, visActive, visOwner, visTau, unlearnBanks, unlearnedCount: 0, frames, K: lapK, isEmergent, tauMax: nVis / lapK, brushXY: null };
+    curF = 0;
+    playing = true;
+    document.getElementById("timeline").max = frames.length - 1;
+    document.getElementById("unlearnStat").textContent = "Unlearned: 0 pts (drag on green panel)";
+    renderFrame();
+    startLoop();
+  }
+
+  const PASS_COLORS = [
+    "rgba(168,175,186,0.22)",
+    "rgba(30,36,44,0.62)",
+    "rgba(217,119,6,0.72)",
+    "rgba(124,58,237,0.72)"
+  ];
+
+  function drawPill(ctx, w, h, text, borderCol, bgCol, textCol, atTop) {
+    ctx.save();
+    ctx.font = "600 10.5px 'IBM Plex Mono', monospace";
+    const tw = ctx.measureText(text).width + 16, bh = 22;
+    const bx = atTop ? (w - tw - 8) : (w - tw) / 2, by = atTop ? 8 : (h - bh) / 2;
+    ctx.fillStyle = bgCol; ctx.strokeStyle = borderCol; ctx.lineWidth = 1.1;
+    ctx.beginPath(); ctx.roundRect(bx, by, tw, bh, 5); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = textCol; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillText(text, bx + tw / 2, by + bh / 2 + 0.5);
+    ctx.restore();
+  }
+
+  function drawPanel(P, pts, activeMask, cFlat, bounds, color, brushXY, effPass, pendingMsg, lockedMsg) {
+    const ctx = P.ctx, w = P.w, h = P.h;
+    ctx.clearRect(0, 0, w, h);
+    const [x0, x1, y0, y1] = bounds, pad = 8;
+    const sx = (w - 2 * pad) / (x1 - x0), sy = (h - 2 * pad) / (y1 - y0);
+    const tx = x => pad + (x - x0) * sx, ty = y => h - pad - (y - y0) * sy;
+
+    const n = pts.length / 2;
+    const full = Math.floor(effPass + 1e-9);
+    const frac = Math.max(0, effPass - full);
+    const cut = Math.round(frac * n);
+
+    for (let i = 0; i < n; i++) {
+      if (activeMask && !activeMask[i]) continue;
+      const touches = effPass <= 1e-9 ? 0 : (full + (i < cut ? 1 : 0));
+      ctx.fillStyle = PASS_COLORS[Math.min(3, touches)];
+      const sz = touches === 0 ? 2.0 : 2.3;
+      ctx.fillRect(tx(pts[2 * i]) - sz / 2, ty(pts[2 * i + 1]) - sz / 2, sz, sz);
+    }
+
+    if (!cFlat) {
+      if (pendingMsg) drawPill(ctx, w, h, pendingMsg, "#e5b4b4", "rgba(255,250,250,0.92)", "#9e2a2b", false);
+      return 0;
+    }
+
+    const K = cFlat.length / 2;
+    const counts = new Int32Array(K);
+    for (let i = 0; i < n; i++) {
+      if (activeMask && !activeMask[i]) continue;
+      const px = pts[2 * i], py = pts[2 * i + 1];
+      let best = 0, bd = Infinity;
+      for (let j = 0; j < K; j++) {
+        const dx = px - cFlat[2 * j], dy = py - cFlat[2 * j + 1], d2 = dx * dx + dy * dy;
+        if (d2 < bd) { bd = d2; best = j; }
+      }
+      counts[best]++;
+    }
+
+    const S = [];
+    for (let j = 0; j < K; j++) if (counts[j] > 0 || !activeMask) S.push([cFlat[2 * j], cFlat[2 * j + 1]]);
+    if (S.length > 1) {
+      const segs = cellEdges(S, x0, x1, y0, y1);
+      ctx.save(); ctx.strokeStyle = color; ctx.globalAlpha = 0.55; ctx.lineWidth = K >= 32 ? 0.95 : 1.3;
+      ctx.beginPath();
+      for (const [ax, ay, bx, by] of segs) { ctx.moveTo(tx(ax), ty(ay)); ctx.lineTo(tx(bx), ty(by)); }
+      ctx.stroke(); ctx.restore();
+    }
+
+    let dead = 0;
+    for (let j = 0; j < K; j++) {
+      const cx = tx(cFlat[2 * j]), cy = ty(cFlat[2 * j + 1]);
+      if (counts[j] > 0) {
+        ctx.beginPath(); ctx.arc(cx, cy, K >= 32 ? 3.2 : 4.2, 0, Math.PI * 2);
+        ctx.fillStyle = color; ctx.fill();
+        ctx.lineWidth = 1.05; ctx.strokeStyle = "#fff"; ctx.stroke();
+      } else {
+        dead++;
+        ctx.strokeStyle = "#b3261e"; ctx.lineWidth = 1.6;
+        ctx.beginPath(); ctx.moveTo(cx - 3.6, cy - 3.6); ctx.lineTo(cx + 3.6, cy + 3.6);
+        ctx.moveTo(cx + 3.6, cy - 3.6); ctx.lineTo(cx - 3.6, cy + 3.6); ctx.stroke();
+      }
+    }
+
+    if (lockedMsg) drawPill(ctx, w, h, lockedMsg, "#95d5b2", "rgba(234,247,240,0.94)", "#0b8043", true);
+    if (brushXY) {
+      ctx.save();
+      ctx.strokeStyle = "#b3261e"; ctx.fillStyle = "rgba(214,39,40,0.10)"; ctx.lineWidth = 1.4;
+      ctx.beginPath(); ctx.arc(brushXY[0], brushXY[1], 24, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      ctx.restore();
+    }
+    return dead;
+  }
+
+  function drawMseChart() {
+    const isMdl = document.getElementById("selMetric").value === "mdl";
+    const keys = isMdl ? ["lMdl", "fMdl", "oMdl"] : ["lMse", "fMse", "oMse"];
+    document.getElementById("titleChart").textContent = isMdl ? "Held-Out MDL (nats/pt)" : "Live Test MSE vs. Passes";
+
+    const ctx = P_MSE.ctx, w = P_MSE.w, h = P_MSE.h, frs = SIM.frames;
+    ctx.clearRect(0, 0, w, h);
+    const padL = 42, padR = 12, padT = 14, padB = 26;
+    const pw = w - padL - padR, ph = h - padT - padB;
+    const pMax = frs[frs.length - 1].pass || 1;
+    let ymin = Infinity, ymax = -Infinity;
+    for (const f of frs) {
+      for (const k of keys) if (f[k] !== null) { ymin = Math.min(ymin, f[k]); ymax = Math.max(ymax, f[k]); }
+    }
+    if (!isFinite(ymin)) { ymin = 0.01; ymax = 1; }
+    const useLog = !isMdl && ymin > 0 && (ymax / Math.max(ymin, 1e-4)) > 7;
+    const span = Math.max(1e-6, ymax - ymin);
+    const lo = useLog ? Math.log(Math.max(ymin * 0.85, 1e-4)) : (isMdl ? (ymin - 0.08 * span) : 0);
+    const hi = useLog ? Math.log(ymax * 1.12) : (isMdl ? (ymax + 0.10 * span) : ymax * 1.08);
+    const xp = p => padL + (p / pMax) * pw;
+    const yp = v => padT + ph - ((useLog ? Math.log(Math.max(v, 1e-4)) : v) - lo) / (hi - lo) * ph;
+
+    ctx.strokeStyle = "#eceef1"; ctx.lineWidth = 1;
+    for (let g = 0; g <= 4; g++) {
+      const y = padT + (g / 4) * ph;
+      ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(padL + pw, y); ctx.stroke();
+      const val = useLog ? Math.exp(hi - (g / 4) * (hi - lo)) : (hi - (g / 4) * (hi - lo));
+      ctx.fillStyle = "#555d66"; ctx.font = "10px 'IBM Plex Mono', monospace";
+      ctx.textAlign = "right"; ctx.fillText(val.toFixed(2), padL - 5, y + 3);
+    }
+
+    if (pMax > 1.05) {
+      const x1 = xp(1.0);
+      ctx.save(); ctx.strokeStyle = "#b7e4c7"; ctx.setLineDash([3, 3]);
+      ctx.beginPath(); ctx.moveTo(x1, padT); ctx.lineTo(x1, padT + ph); ctx.stroke();
+      ctx.fillStyle = "#0b8043"; ctx.font = "9.5px 'IBM Plex Mono', monospace"; ctx.textAlign = "left";
+      ctx.fillText("l-means stops (1.0)", x1 + 4, padT + ph * 0.45);
+      ctx.restore();
+    }
+
+    function line(key, col, upto, alpha, lw, dashAfterOne) {
+      ctx.save(); ctx.strokeStyle = col; ctx.globalAlpha = alpha; ctx.lineWidth = lw;
+      let st = false; ctx.beginPath();
+      for (let i = 0; i <= upto; i++) {
+        if (frs[i][key] === null) continue;
+        if (dashAfterOne && frs[i].pass > 1.0001) break;
+        const x = xp(frs[i].pass), y = yp(frs[i][key]);
+        if (!st) { ctx.moveTo(x, y); st = true; } else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+      if (dashAfterOne && pMax > 1.05) {
+        ctx.setLineDash([4, 3]); ctx.beginPath(); let s2 = false;
+        for (let i = 0; i <= upto; i++) {
+          if (frs[i][key] === null || frs[i].pass < 0.9999) continue;
+          const x = xp(frs[i].pass), y = yp(frs[i][key]);
+          if (!s2) { ctx.moveTo(x, y); s2 = true; } else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+    line(keys[0], RED, frs.length - 1, 0.18, 1.1, false);
+    line(keys[1], BLUE, frs.length - 1, 0.18, 1.1, false);
+    line(keys[2], GREEN, frs.length - 1, 0.18, 1.1, true);
+
+    line(keys[0], RED, curF, 1, 1.75, false);
+    line(keys[1], BLUE, curF, 1, 1.85, false);
+    line(keys[2], GREEN, curF, 1, 2.4, true);
+
+    const cx = xp(frs[curF].pass);
+    ctx.strokeStyle = "#8c959f"; ctx.setLineDash([3, 3]);
+    ctx.beginPath(); ctx.moveTo(cx, padT); ctx.lineTo(cx, padT + ph); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle = "#555d66"; ctx.font = "10.5px sans-serif"; ctx.textAlign = "center";
+    ctx.fillText("passes (0 to " + pMax.toFixed(1) + ")", padL + pw / 2, h - 6);
+  }
+
+  function renderFrame() {
+    if (!SIM) return;
+    const isMdl = document.getElementById("selMetric").value === "mdl";
+    const fr = SIM.frames[curF], p = fr.pass;
+    let lapC = fr.lapC;
+    if (SIM.unlearnedCount > 0 && curF === SIM.frames.length - 1) {
+      lapC = new Float64Array(SIM.K * 2);
+      for (let j = 0; j < SIM.K; j++) {
+        const ro = readoutBank(SIM.unlearnBanks[j], SIM.tauMax);
+        lapC[2 * j] = ro.x; lapC[2 * j + 1] = ro.y;
+      }
+    }
+    const lPend = p <= 1e-9 ? "0% scanned" : (p < 1.0 ? "Scanning Pass 1 (" + Math.round(p * 100) + "%) - 0 clusters" : null);
+    const fPend = p <= 1e-9 ? "0% scanned" : null;
+    const oLock = (p >= 1.0 - 1e-9 && SIM.frames[SIM.frames.length - 1].pass > 1.05) ? "1.0 Pass Done (halted)" : null;
+
+    const d0 = drawPanel(P_LLOYD, SIM.visPts, null, fr.lloydC, SIM.bounds, RED, null, p, lPend, null);
+    const d1 = drawPanel(P_FAIR, SIM.visPts, null, fr.fairC, SIM.bounds, BLUE, null, p, fPend, null);
+    const d2 = drawPanel(P_LAP, SIM.visPts, SIM.unlearnedCount > 0 ? SIM.visActive : null, lapC, SIM.bounds, GREEN, SIM.brushXY, Math.min(p, 1.0), fPend, oLock);
+    drawMseChart();
+
+    const curLapK = lapC ? lapC.length / 2 : 0;
+    const kPref = SIM.isEmergent ? ("K(t) = <b>" + curLapK + "</b> &middot; ") : "";
+    const lbl = isMdl ? "MDL" : "MSE";
+    const suf = isMdl ? " nats" : "";
+    const lv = isMdl ? fr.lMdl : fr.lMse;
+    const fv = isMdl ? fr.fMdl : fr.fMse;
+    const ov = isMdl ? fr.oMdl : fr.oMse;
+    const dig = isMdl ? 3 : 4;
+    document.getElementById("roLloyd").innerHTML = lv === null ? (lbl + ": <b>undefined</b> (&lt; 1 pass)") : (lbl + ": <b>" + lv.toFixed(dig) + "</b>" + suf + (d0 ? " (" + d0 + " dead)" : ""));
+    document.getElementById("roFair").innerHTML = fv === null ? (lbl + ": <b>undefined</b> (0 pts)") : (lbl + ": <b>" + fv.toFixed(dig) + "</b>" + suf + (d1 ? " (" + d1 + " dead)" : ""));
+    document.getElementById("roLap").innerHTML = ov === null ? (lbl + ": <b>undefined</b> (0 pts)") : (kPref + lbl + ": <b>" + ov.toFixed(dig) + "</b>" + suf + (d2 ? " (" + d2 + " dead)" : ""));
+    document.getElementById("roStep").innerHTML = "Step <b>" + curF + "</b> / " + (SIM.frames.length - 1);
+    document.getElementById("timeline").value = curF;
+    document.getElementById("lblTimeline").textContent = "Pass " + fr.pass.toFixed(2);
+    document.getElementById("btnPlayPause").textContent = playing ? "Pause" : "Play";
+  }
+
+  function startLoop() {
+    clearInterval(timer);
+    if (!playing) return;
+    timer = setInterval(() => {
+      if (curF < SIM.frames.length - 1) {
+        curF++;
+        renderFrame();
+      } else {
+        playing = false;
+        renderFrame();
+        clearInterval(timer);
+      }
+    }, 45);
+  }
+
+  // Interactive Click/Drag-to-Unlearn (`sign = -1`) on the green l-means canvas:
+  let dragging = false;
+  function unlearnAtEvent(ev) {
+    if (!SIM) return;
+    playing = false; clearInterval(timer);
+    curF = SIM.frames.length - 1;
+    const rect = P_LAP.cv.getBoundingClientRect();
+    const px = ((ev.clientX - rect.left) / rect.width) * P_LAP.w;
+    const py = ((ev.clientY - rect.top) / rect.height) * P_LAP.h;
+    SIM.brushXY = [px, py];
+
+    const [x0, x1, y0, y1] = SIM.bounds, pad = 8;
+    const sx = (P_LAP.w - 2 * pad) / (x1 - x0), sy = (P_LAP.h - 2 * pad) / (y1 - y0);
+    const wx = x0 + (px - pad) / sx, wy = y0 + (P_LAP.h - pad - py) / sy;
+    const rWorld2 = Math.pow(24 / sx, 2);
+
+    const t0 = performance.now();
+    let delNow = 0;
+    const nVis = SIM.visPts.length / 2;
+    for (let i = 0; i < nVis; i++) {
+      if (!SIM.visActive[i]) continue;
+      const dx = SIM.visPts[2 * i] - wx, dy = SIM.visPts[2 * i + 1] - wy;
+      if (dx * dx + dy * dy <= rWorld2) {
+        SIM.visActive[i] = 0;
+        accumImpulse(SIM.unlearnBanks[SIM.visOwner[i]], SIM.visTau[i], -1, SIM.visPts[2 * i], SIM.visPts[2 * i + 1]);
+        SIM.unlearnedCount++;
+        delNow++;
+      }
+    }
+    const elapsedUs = ((performance.now() - t0) * 1000).toFixed(0);
+    if (delNow > 0) {
+      document.getElementById("unlearnStat").textContent =
+        "Unlearned: " + SIM.unlearnedCount + " pts (last sign=-1 batch: " + elapsedUs + " us)";
+    }
+    renderFrame();
+  }
+
+  P_LAP.cv.addEventListener("pointerdown", e => { dragging = true; P_LAP.cv.setPointerCapture(e.pointerId); unlearnAtEvent(e); });
+  P_LAP.cv.addEventListener("pointermove", e => { if (dragging) unlearnAtEvent(e); });
+  P_LAP.cv.addEventListener("pointerup", () => { dragging = false; if (SIM) { SIM.brushXY = null; renderFrame(); } });
+
+  document.getElementById("rngK").oninput = e => { document.getElementById("valK").textContent = e.target.value; };
+  document.getElementById("selMode").onchange = e => {
+    document.getElementById("selMetric").value = e.target.value === "emergent" ? "mdl" : "mse";
+    runSimulation();
+  };
+  document.getElementById("selMetric").onchange = renderFrame;
+  document.getElementById("btnRun").onclick = runSimulation;
+  document.getElementById("btnNewSeed").onclick = () => {
+    document.getElementById("inpSeed").value = Math.floor(Math.random() * 9000) + 100;
+    runSimulation();
+  };
+  document.getElementById("selDataset").onchange = runSimulation;
+  document.getElementById("selInit").onchange = runSimulation;
+  document.getElementById("btnPlayPause").onclick = () => {
+    if (curF >= SIM.frames.length - 1) curF = 0;
+    playing = !playing; renderFrame(); startLoop();
+  };
+  document.getElementById("timeline").oninput = e => {
+    playing = false; clearInterval(timer);
+    curF = parseInt(e.target.value, 10);
+    renderFrame();
+  };
+
+  runSimulation();
+})();
+</script>
+</body>
+</html>
