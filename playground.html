@@ -265,6 +265,7 @@
         <select id="selInit">
           <option value="corner" selected>Corner Trap (adversarial)</option>
           <option value="uniform">Random Sample from Data</option>
+          <option value="oracle">Oracle True Modes (rare-mode test)</option>
         </select>
       </label>
 
@@ -1157,6 +1158,38 @@
       for (let j = 0; j < K; j++) {
         initC[2 * j] = cx + 0.18 * randn(rng);
         initC[2 * j + 1] = cy + 0.18 * randn(rng);
+      }
+    } else if (initMode === "oracle") {
+      const trueModes = {
+        hero: [[-1.5, -1.1], [1.4, 0.9], [-1.2, 1.85], [0.45, -2.15], [2.25, -1.55]],
+        grid3x3: [[-2.2,-2.2],[0,-2.2],[2.2,-2.2],[-2.2,0],[0,0],[2.2,0],[-2.2,2.2],[0,2.2],[2.2,2.2]],
+        twosizes: [[-0.45, 0], [3.85, 0]],
+        zipf: [[-0.85,-0.85],[0.85,-0.85],[-0.85,0.85],[0.85,0.85],[-3.35,-3.35],[3.35,-3.35],[-3.35,3.35],[3.35,3.35]]
+      }[kind];
+      if (trueModes) {
+        for (let j = 0; j < K; j++) {
+          const m = trueModes[j % trueModes.length];
+          const jit = j < trueModes.length ? 0 : 0.08;
+          initC[2 * j] = m[0] + jit * randn(rng);
+          initC[2 * j + 1] = m[1] + jit * randn(rng);
+        }
+      } else {
+        // Farthest-point covering centers on curved manifolds:
+        initC[0] = pts[0]; initC[1] = pts[1];
+        const mScan = Math.min(N, 1200);
+        for (let j = 1; j < K; j++) {
+          let bi = 0, bd = -1;
+          for (let i = 0; i < mScan; i++) {
+            const px = pts[2 * i], py = pts[2 * i + 1];
+            let md = Infinity;
+            for (let a = 0; a < j; a++) {
+              const d2 = (px - initC[2 * a]) ** 2 + (py - initC[2 * a + 1]) ** 2;
+              if (d2 < md) md = d2;
+            }
+            if (md > bd) { bd = md; bi = i; }
+          }
+          initC[2 * j] = pts[2 * bi]; initC[2 * j + 1] = pts[2 * bi + 1];
+        }
       }
     } else {
       for (let j = 0; j < K; j++) {
