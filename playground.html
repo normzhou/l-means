@@ -543,9 +543,9 @@
         if (nEff[r] > maxNeff) maxNeff = nEff[r];
       }
     }
-    if (first < 0) return { x: 0, y: 0, nEff: 0, traceVar: 0, rateMass: rateAt };
+    if (first < 0) return { x: 0, y: 0, nEff: 0, traceVar: 0, rateMass: rateAt, statW: 1 };
     if (maxNeff <= 3) {
-      return { x: rc[2 * first], y: rc[2 * first + 1], nEff: nEff[first], traceVar: 0, rateMass: rateAt };
+      return { x: rc[2 * first], y: rc[2 * first + 1], nEff: nEff[first], traceVar: 0, rateMass: rateAt, statW: 1 };
     }
     let rVar = 4;
     for (let r = 0; r < 5; r++) if (valid[r] && nEff[r] > 3) { rVar = r; break; }
@@ -557,11 +557,13 @@
     let rStart = rVar;
     for (let r = 0; r < 5; r++) if (valid[r] && nEff[r] >= 2) { rStart = r; break; }
     let ox = rc[2 * rStart], oy = rc[2 * rStart + 1], curN = Math.max(1e-6, nEff[rStart]);
+    let statW = rStart === 4 ? 1 : 0;
     const zeta = 2.0; // 1 + sqrt(2 / D) for D = 2
 
     if (traceVar > 0) {
       for (let s = rStart + 1; s < 5; s++) {
-        if (!valid[s] || nEff[s] <= curN * 1.02) continue;
+        if (!valid[s]) continue;
+        if (nEff[s] <= curN * 1.02) { if (s === 4) statW = 1; continue; }
         const ns = nEff[s], sx = rc[2 * s], sy = rc[2 * s + 1];
         const diff2 = (ox - sx) * (ox - sx) + (oy - sy) * (oy - sy);
         const vDelta = s === 4 ? traceVar * Math.max(0, 1 / curN - 1 / ns)
@@ -569,12 +571,13 @@
         const alpha = (diff2 <= zeta * vDelta || diff2 <= 1e-28) ? 0 : Math.min(1, Math.max(0, 1 - (zeta * vDelta) / diff2));
         ox = (1 - alpha) * sx + alpha * ox;
         oy = (1 - alpha) * sy + alpha * oy;
+        if (s === 4) statW = 1 - alpha;
         const vp = traceVar / curN, vs = traceVar / ns, cov = s === 4 ? vs : (2 * traceVar / (curN + ns));
         const vn = (1 - alpha) * (1 - alpha) * vs + alpha * alpha * vp + 2 * alpha * (1 - alpha) * cov;
         curN = Math.min(ns, Math.max(curN, traceVar / Math.max(1e-28, vn)));
       }
     }
-    return { x: ox, y: oy, nEff: curN, traceVar, rateMass: rateAt };
+    return { x: ox, y: oy, nEff: curN, traceVar, rateMass: rateAt, statW };
   }
 
   function mergeBankInto(dst, src) {
@@ -715,8 +718,8 @@
     }
   }
 
-  function notCoveredByNeighbor(ros, jParent, nSub, nSampleParent, sxSub, sySub, qSub) {
-    if (ros.length <= 1 || nSub < 1 || nSampleParent <= 0) return true;
+  function notCoveredByNeighbor(ros, jParent, nSub, nSampleParent, sxSub, sySub) {
+    if (ros.length <= 1 || nSub < 1 || nSampleParent <= 0 || nSub > 0.35 * nSampleParent) return true;
     let nTot = 0;
     for (let m = 0; m < ros.length; m++) nTot += Math.max(0, ros[m].nEff);
     if (nTot <= 1) return true;
@@ -751,6 +754,98 @@
     }
   }
 
+  function sphericalSplitNetNats(nt, sxTot, syTot, qTot, subs, extraPen) {
+    if (nt < 8 || subs.length < 2) return -1e9;
+    const mx = sxTot / nt, my = syTot / nt;
+    const sse1 = Math.max(1e-24, qTot - nt * (mx * mx + my * my));
+    const sig1 = sse1 / (2 * nt);
+    let sseSum = 0;
+    for (const s of subs) {
+      const cx = s.sx / s.n, cy = s.sy / s.n;
+      s.sse = Math.max(0, s.q - s.n * (cx * cx + cy * cy));
+      sseSum += s.sse;
+    }
+    const vPool = Math.max(1e-24, sseSum / (2 * nt));
+    const l1 = nt * (Math.log(2 * Math.PI * sig1) + 1.0) + 2.0 * Math.log(1 + nt);
+    let lm = subs.length * 2.0 * Math.log(1 + nt) + extraPen;
+    for (const s of subs) {
+      const sigA = (s.sse / 2 + vPool) / s.n;
+      const piA = s.n / nt;
+      lm += s.n * (Math.log(2 * Math.PI * sigA) + 1.0 + 1.0 / s.n - Math.log(piA));
+    }
+    return l1 - lm;
+  }
+
+  function bestOctaveFromMicro(microCells, maxAllow, extraPen) {
+    const nodes = microCells.filter(c => c.n >= 3).map(c => ({ n: c.n, sx: c.sx, sy: c.sy, q: c.q }));
+    if (nodes.length < 2) return null;
+    let nt = 0, sxT = 0, syT = 0, qT = 0;
+    for (const c of nodes) { nt += c.n; sxT += c.sx; syT += c.sy; qT += c.q; }
+    let best = null;
+    while (nodes.length >= 2) {
+      if (nodes.length <= maxAllow && nt >= 4 * nodes.length) {
+        const net = sphericalSplitNetNats(nt, sxT, syT, qT, nodes, extraPen);
+        if (net > 0 && (!best || net > best.net)) {
+          best = { net, subs: nodes.map(c => ({ n: c.n, sx: c.sx, sy: c.sy, q: c.q })) };
+        }
+      }
+      if (nodes.length === 2) break;
+      let bi = 0, bj = 1, bCost = Infinity;
+      for (let i = 0; i < nodes.length; i++) {
+        const xi = nodes[i].sx / nodes[i].n, yi = nodes[i].sy / nodes[i].n;
+        for (let j = i + 1; j < nodes.length; j++) {
+          const xj = nodes[j].sx / nodes[j].n, yj = nodes[j].sy / nodes[j].n;
+          const cost = (nodes[i].n * nodes[j].n / (nodes[i].n + nodes[j].n)) * ((xi - xj) * (xi - xj) + (yi - yj) * (yi - yj));
+          if (cost < bCost) { bCost = cost; bi = i; bj = j; }
+        }
+      }
+      nodes[bi].n += nodes[bj].n; nodes[bi].sx += nodes[bj].sx; nodes[bi].sy += nodes[bj].sy; nodes[bi].q += nodes[bj].q;
+      nodes.splice(bj, 1);
+    }
+    return best;
+  }
+
+  function makeMicroSketch(cap, warmTarget) {
+    return { cap, warmTarget, warmHits: 0, meanD2: 1, cx: [], cy: [], wn: [], frozen: false, testHits: 0, cells: null };
+  }
+
+  function feedMicroSketch(sk, x, y) {
+    if (!sk.frozen) {
+      sk.warmHits++;
+      if (sk.cx.length === 0) {
+        sk.cx.push(x); sk.cy.push(y); sk.wn.push(1);
+        return;
+      }
+      let best = 0, bd = Infinity;
+      for (let a = 0; a < sk.cx.length; a++) {
+        const d2 = (x - sk.cx[a]) * (x - sk.cx[a]) + (y - sk.cy[a]) * (y - sk.cy[a]);
+        if (d2 < bd) { bd = d2; best = a; }
+      }
+      sk.meanD2 = (sk.cx.length === 1 && sk.warmHits === 2) ? Math.max(1e-12, bd) : (0.95 * sk.meanD2 + 0.05 * bd);
+      if (sk.cx.length < sk.cap && (bd > 1.25 * sk.meanD2 || sk.warmHits > 4 * sk.cx.length)) {
+        sk.cx.push(x); sk.cy.push(y); sk.wn.push(1);
+      } else {
+        sk.wn[best]++;
+        const eta = 1 / sk.wn[best];
+        sk.cx[best] += eta * (x - sk.cx[best]);
+        sk.cy[best] += eta * (y - sk.cy[best]);
+      }
+      if (sk.warmHits >= sk.warmTarget && sk.cx.length >= 2) {
+        sk.frozen = true;
+        sk.cells = Array.from({ length: sk.cx.length }, () => ({ n: 0, sx: 0, sy: 0, q: 0 }));
+      }
+    } else {
+      let best = 0, bd = Infinity;
+      for (let a = 0; a < sk.cx.length; a++) {
+        const d2 = (x - sk.cx[a]) * (x - sk.cx[a]) + (y - sk.cy[a]) * (y - sk.cy[a]);
+        if (d2 < bd) { bd = d2; best = a; }
+      }
+      const c = sk.cells[best];
+      c.n++; c.sx += x; c.sy += y; c.q += x * x + y * y;
+      sk.testHits++;
+    }
+  }
+
   function stepLaplaceEmergentBatch(state, chunk, kMax) {
     const m = chunk.length / 2;
     if (m === 0) return;
@@ -758,13 +853,21 @@
       state.banks.push(makeBank(chunk[0], chunk[1], state.tau, 1e-10, 0.5));
     }
     const K = state.banks.length;
+    const initCap = K <= 1 ? 64 : 8, initWarm = K <= 1 ? 480 : 40;
+    if (!state.cands) state.cands = [];
+    if (!state.sketches) state.sketches = [];
+    while (state.cands.length < K) state.cands.push(null);
+    while (state.sketches.length < K) state.sketches.push(makeMicroSketch(initCap, initWarm));
+
     const cFlat = new Float64Array(K * 2);
     for (let j = 0; j < K; j++) {
       const ro = readoutBank(state.banks[j], state.tau);
       cFlat[2 * j] = ro.x; cFlat[2 * j + 1] = ro.y;
+      if (ro.nEff >= 64 && ro.statW < 0.04) {
+        state.cands[j] = null;
+        state.sketches[j] = makeMicroSketch(initCap, initWarm);
+      }
     }
-    if (!state.cands) state.cands = [];
-    while (state.cands.length < K) state.cands.push(null);
 
     const labels = new Int32Array(m);
     let bn = new Float64Array(K);
@@ -780,189 +883,158 @@
       labels[i] = best; bn[best]++;
       if (bd > farD2[best] || farIdx[best] < 0) { farD2[best] = bd; farIdx[best] = i; }
       accumImpulse(state.banks[best], state.tau, 1, x, y);
+      feedMicroSketch(state.sketches[best], x, y);
 
       const cd = state.cands[best];
       if (cd) {
-        const z = (x - cd.cx) * cd.ux + (y - cd.cy) * cd.uy;
-        const qPt = x * x + y * y;
-        if (z < cd.thr) { cd.nn++; cd.z1n += z; cd.z2n += z * z; cd.snx += x; cd.sny += y; cd.qn += qPt; }
-        else { cd.np++; cd.z1p += z; cd.z2p += z * z; cd.spx += x; cd.spy += y; cd.qp += qPt; }
+        const z = (x - cd.cx) * cd.ux + (y - cd.cy) * cd.uy, qPt = x * x + y * y;
+        if (z < cd.thr) { cd.nn++; cd.snx += x; cd.sny += y; cd.qn += qPt; }
+        else { cd.np++; cd.spx += x; cd.spy += y; cd.qp += qPt; }
       }
     }
 
-    const dfParam = 1.5; // (D + 1) / 2 for D = 2
     let ros = state.banks.map(bk => readoutBank(bk, state.tau));
-    let splitPair = null;
+    const mk = s => {
+      const b = { tRef: state.tau, rateN: s.n, sn: new Float64Array(9).fill(s.n), sq: new Float64Array(9).fill(s.q), vw2: new Float64Array(5).fill(s.n), vs: new Float64Array(10) };
+      for (let r = 0; r < 5; r++) { b.vs[2 * r] = s.sx; b.vs[2 * r + 1] = s.sy; }
+      return b;
+    };
 
-    // 0. Check persistent causal candidate splits (`O(D)` per cluster, exogenous hyperplane):
-    if (state.banks.length < kMax) {
+    let didSplit = false, splitDonor = -1;
+    const newIdxs = [];
+    const maxAllow = kMax - state.banks.length + 1;
+
+    // A. Persistent 64-microcell Octave Hierarchy (tunnels 1 -> 2..64 across ring/spiral curvature barriers):
+    if (maxAllow >= 2) {
+      let bestOct = null;
+      for (let j = 0; j < state.banks.length; j++) {
+        const sk = state.sketches[j];
+        if (!sk || !sk.frozen || sk.testHits < 3 * sk.cap) continue;
+        const cand = bestOctaveFromMicro(sk.cells, maxAllow, Math.log(8));
+        if (cand) {
+          const valid = cand.subs.filter(s => notCoveredByNeighbor(ros, j, s.n, sk.testHits, s.sx, s.sy));
+          if (valid.length >= 2 && (!bestOct || cand.net > bestOct.net)) {
+            bestOct = { net: cand.net, j, subs: valid };
+          }
+        }
+      }
+      if (bestOct) {
+        const { j, subs } = bestOct;
+        state.banks[j] = mk(subs[0]); state.cands[j] = null; state.sketches[j] = makeMicroSketch(8, 40);
+        splitDonor = j;
+        for (let a = 1; a < subs.length; a++) {
+          state.banks.push(mk(subs[a])); state.cands.push(null); state.sketches.push(makeMicroSketch(8, 40));
+          newIdxs.push(state.banks.length - 1);
+          invalidateStolenCands(state, subs[a].sx / subs[a].n, subs[a].sy / subs[a].n);
+        }
+        didSplit = true;
+      }
+    }
+
+    // B. Persistent 2-way rare-mode candidate (< 1 pt/batch Zipf satellites):
+    if (!didSplit && maxAllow >= 2) {
       let bestPromo = null;
       for (let j = 0; j < state.banks.length; j++) {
         const cd = state.cands[j];
         if (!cd) continue;
         const nt = cd.nn + cd.np;
         if (cd.nn >= 4 && cd.np >= 4) {
-          const pn = cd.nn / nt, pp = cd.np / nt;
-          const zm = (cd.z1n + cd.z1p) / nt;
-          const vz = Math.max(1e-24, (cd.z2n + cd.z2p) / nt - zm * zm);
-          const znM = cd.z1n / cd.nn, zpM = cd.z1p / cd.np;
-          const vPool = Math.max(1e-24, vz - pn * pp * (zpM - znM) * (zpM - znM));
-          const ssN = Math.max(0, cd.z2n - cd.nn * znM * znM);
-          const ssP = Math.max(0, cd.z2p - cd.np * zpM * zpM);
-          const vnUip = (ssN + vPool) / cd.nn, vpUip = (ssP + vPool) / cd.np;
-          const gZ = 0.5 * (Math.log(vz) - pn * Math.log(vnUip) - pp * Math.log(vpUip)) - 0.5 * (1 / cd.nn + 1 / cd.np);
-          const ent = -pn * Math.log(pn) - pp * Math.log(pp);
-          const net = nt * (gZ - ent) - 2.0 * Math.log(1 + nt);
-          if (net > 0 && notCoveredByNeighbor(ros, j, cd.nn, nt, cd.snx, cd.sny, cd.qn) && notCoveredByNeighbor(ros, j, cd.np, nt, cd.spx, cd.spy, cd.qp) && (!bestPromo || net > bestPromo.net)) {
-            bestPromo = { net, j, cd };
-          } else if (net > 0 || (nt >= 64 && net <= 0)) {
-            state.cands[j] = null;
-          }
-        } else if (nt >= 96 && (cd.nn === 0 || cd.np === 0)) {
-          state.cands[j] = null;
-        }
+          const subs = [{ n: cd.nn, sx: cd.snx, sy: cd.sny, q: cd.qn }, { n: cd.np, sx: cd.spx, sy: cd.spy, q: cd.qp }];
+          const net = sphericalSplitNetNats(nt, cd.snx + cd.spx, cd.sny + cd.spy, cd.qn + cd.qp, subs, 0);
+          if (net > 0 && notCoveredByNeighbor(ros, j, cd.nn, nt, cd.snx, cd.sny) && notCoveredByNeighbor(ros, j, cd.np, nt, cd.spx, cd.spy) && (!bestPromo || net > bestPromo.net)) {
+            bestPromo = { net, j, subs };
+          } else if (net > 0 || (nt >= 64 && net <= 0)) state.cands[j] = null;
+        } else if (nt >= 96 && (cd.nn === 0 || cd.np === 0)) state.cands[j] = null;
       }
       if (bestPromo) {
-        const { j, cd } = bestPromo;
-        const bNeg = { tRef: state.tau, rateN: cd.nn, sn: new Float64Array(9).fill(cd.nn), sq: new Float64Array(9).fill(cd.qn), vw2: new Float64Array(5).fill(cd.nn), vs: new Float64Array(10) };
-        const bPos = { tRef: state.tau, rateN: cd.np, sn: new Float64Array(9).fill(cd.np), sq: new Float64Array(9).fill(cd.qp), vw2: new Float64Array(5).fill(cd.np), vs: new Float64Array(10) };
-        for (let r = 0; r < 5; r++) {
-          bNeg.vs[2 * r] = cd.snx; bNeg.vs[2 * r + 1] = cd.sny;
-          bPos.vs[2 * r] = cd.spx; bPos.vs[2 * r + 1] = cd.spy;
-        }
-        state.banks[j] = bNeg; state.cands[j] = null;
-        state.banks.push(bPos); state.cands.push(null);
-        invalidateStolenCands(state, cd.spx / cd.np, cd.spy / cd.np);
-        splitPair = [j, state.banks.length - 1];
+        const { j, subs } = bestPromo;
+        state.banks[j] = mk(subs[0]); state.cands[j] = null; state.sketches[j] = makeMicroSketch(8, 40);
+        state.banks.push(mk(subs[1])); state.cands.push(null); state.sketches.push(makeMicroSketch(8, 40));
+        invalidateStolenCands(state, subs[1].sx / subs[1].n, subs[1].sy / subs[1].n);
+        splitDonor = j; newIdxs.push(state.banks.length - 1); didSplit = true;
       }
     }
 
-    // 1. Scale-free 4-direction Gram-Schmidt subspace + 1D valley MDL Split (`Delta K = +1`):
-    if (!splitPair && state.banks.length < kMax) {
-      let bestSplit = null;
+    // C. Fast intra-batch 4-dir 2D Spherical Valley Scan:
+    if (!didSplit && maxAllow >= 2) {
+      let bestVal = null;
       for (let j = 0; j < state.banks.length; j++) {
-        if (bn[j] < 10 || ros[j].nEff < 10 || farIdx[j] < 0) continue;
+        if (bn[j] < 12 || ros[j].nEff < 10 || farIdx[j] < 0) continue;
+        const memberIdx = [];
+        for (let i = 0; i < m; i++) if (labels[i] === j) memberIdx.push(i);
+        const mj = memberIdx.length;
         const fi1 = farIdx[j], cx = ros[j].x, cy = ros[j].y;
-        const dx1 = chunk[2 * fi1] - cx, dy1 = chunk[2 * fi1 + 1] - cy;
-        const l1 = Math.hypot(dx1, dy1);
+        const dx1 = chunk[2 * fi1] - cx, dy1 = chunk[2 * fi1 + 1] - cy, l1 = Math.hypot(dx1, dy1);
         if (l1 <= 1e-12) continue;
         const u1x = dx1 / l1, u1y = dy1 / l1;
-
-        let orthI = -1, maxOrth2 = 0;
-        for (let i = 0; i < m; i++) {
-          if (labels[i] !== j || i === fi1) continue;
-          const dx = chunk[2 * i] - cx, dy = chunk[2 * i + 1] - cy;
-          const dot = dx * u1x + dy * u1y;
+        let orthI = -1, maxO2 = 0;
+        for (const i of memberIdx) {
+          if (i === fi1) continue;
+          const dx = chunk[2 * i] - cx, dy = chunk[2 * i + 1] - cy, dot = dx * u1x + dy * u1y;
           const o2 = Math.max(0, dx * dx + dy * dy - dot * dot);
-          if (o2 > maxOrth2) { maxOrth2 = o2; orthI = i; }
+          if (o2 > maxO2) { maxO2 = o2; orthI = i; }
         }
-
         const dirs = [[u1x, u1y]];
-        if (orthI >= 0 && maxOrth2 > 1e-24) {
-          const dxo = chunk[2 * orthI] - cx, dyo = chunk[2 * orthI + 1] - cy;
-          const dot = dxo * u1x + dyo * u1y;
-          const invL2 = 1 / Math.sqrt(maxOrth2);
-          const u2x = (dxo - dot * u1x) * invL2, u2y = (dyo - dot * u1y) * invL2;
+        if (orthI >= 0 && maxO2 > 1e-24) {
+          const dxo = chunk[2 * orthI] - cx, dyo = chunk[2 * orthI + 1] - cy, dot = dxo * u1x + dyo * u1y;
+          const inv2 = 1 / Math.sqrt(maxO2), u2x = (dxo - dot * u1x) * inv2, u2y = (dyo - dot * u1y) * inv2;
           const s2 = Math.SQRT1_2;
           dirs.push([u2x, u2y], [s2 * (u1x + u2x), s2 * (u1y + u2y)], [s2 * (u1x - u2x), s2 * (u1y - u2y)]);
         }
-
-        const remIdx = [];
-        for (let i = 0; i < m; i++) if (labels[i] === j && i !== fi1 && i !== orthI) remIdx.push(i);
-        const mRem = remIdx.length;
-        const minLeaf = 4;
-        if (mRem < 2 * minLeaf) continue;
-        const mdlPen = 2.0 * Math.log(1 + mRem) + Math.log(dirs.length * mRem);
-
-        const pz = new Float64Array(mRem + 1), pz2 = new Float64Array(mRem + 1);
+        const rem = memberIdx.filter(i => i !== fi1 && i !== orthI), mr = rem.length;
+        if (mr < 8) continue;
+        const scanPen = Math.log(dirs.length * mr);
         for (const [ux, uy] of dirs) {
-          const proj = new Array(mRem);
-          let zSum = 0, zSq = 0;
-          for (let r = 0; r < mRem; r++) {
-            const idxPt = remIdx[r];
-            const z = (chunk[2 * idxPt] - cx) * ux + (chunk[2 * idxPt + 1] - cy) * uy;
-            zSum += z; zSq += z * z;
-            proj[r] = [z, idxPt];
+          const proj = rem.map(i => [(chunk[2 * i] - cx) * ux + (chunk[2 * i + 1] - cy) * uy, i]).sort((a, b) => a[0] - b[0]);
+          const psx = new Float64Array(mr + 1), psy = new Float64Array(mr + 1), pq = new Float64Array(mr + 1);
+          for (let r = 0; r < mr; r++) {
+            const idx = proj[r][1], x = chunk[2 * idx], y = chunk[2 * idx + 1];
+            psx[r + 1] = psx[r] + x; psy[r + 1] = psy[r] + y; pq[r + 1] = pq[r] + x * x + y * y;
           }
-          const zm = zSum / mRem, vz = zSq / mRem - zm * zm;
-          if (vz <= 1e-24) continue;
-          proj.sort((a, b) => a[0] - b[0]);
-          for (let r = 0; r < mRem; r++) {
-            const z = proj[r][0];
-            pz[r + 1] = pz[r] + z;
-            pz2[r + 1] = pz2[r] + z * z;
-          }
-
-          let bestK = -1, bestNet = 0;
-          for (let kCut = minLeaf; kCut <= mRem - minLeaf; kCut++) {
-            if (proj[kCut][0] <= proj[kCut - 1][0] + 1e-12) continue;
-            const nn = kCut, np = mRem - kCut, pn = nn / mRem, pp = np / mRem;
-            const znM = pz[kCut] / nn, zpM = (pz[mRem] - pz[kCut]) / np;
-            const vBet = pn * pp * (zpM - znM) * (zpM - znM);
-            const vPool = Math.max(1e-24, vz - vBet);
-            const ssN = Math.max(0, pz2[kCut] - nn * znM * znM);
-            const ssP = Math.max(0, (pz2[mRem] - pz2[kCut]) - np * zpM * zpM);
-            const vnUip = (ssN + vPool) / nn, vpUip = (ssP + vPool) / np;
-            const bart = 0.5 * (1 / nn + 1 / np);
-            const gZ = 0.5 * (Math.log(vz) - pn * Math.log(vnUip) - pp * Math.log(vpUip)) - bart;
-            const ent = -pn * Math.log(pn) - pp * Math.log(pp);
-            const net = mRem * (gZ - ent) - mdlPen;
-            if (net > bestNet) { bestNet = net; bestK = kCut; }
-          }
-
-          if (bestK >= 0 && (!bestSplit || bestNet > bestSplit.netNats)) {
-            const thr = 0.5 * (proj[bestK - 1][0] + proj[bestK][0]);
-            let snx = 0, sny = 0, qn = 0, cntN = 0, spx = 0, spy = 0, qp = 0, cntP = 0;
-            for (let r = 0; r < mRem; r++) {
-              const [z, idxPt] = proj[r];
-              const x = chunk[2 * idxPt], y = chunk[2 * idxPt + 1], qPt = x * x + y * y;
-              if (z < thr) { snx += x; sny += y; qn += qPt; cntN++; }
-              else { spx += x; spy += y; qp += qPt; cntP++; }
-            }
-            for (const anc of (orthI >= 0 ? [fi1, orthI] : [fi1])) {
-              const x = chunk[2 * anc], y = chunk[2 * anc + 1], qPt = x * x + y * y;
-              const za = (x - cx) * ux + (y - cy) * uy;
-              if (za < thr) { snx += x; sny += y; qn += qPt; cntN++; }
-              else { spx += x; spy += y; qp += qPt; cntP++; }
-            }
-            if (notCoveredByNeighbor(ros, j, cntN, cntN + cntP, snx, sny, qn) && notCoveredByNeighbor(ros, j, cntP, cntN + cntP, spx, spy, qp)) {
-              bestSplit = { netNats: bestNet, j, snx, sny, qn, cntN, spx, spy, qp, cntP };
+          for (let kc = 4; kc <= mr - 4; kc++) {
+            if (proj[kc][0] <= proj[kc - 1][0] + 1e-12) continue;
+            const s0 = { n: kc, sx: psx[kc], sy: psy[kc], q: pq[kc] };
+            const s1 = { n: mr - kc, sx: psx[mr] - psx[kc], sy: psy[mr] - psy[kc], q: pq[mr] - pq[kc] };
+            const net = sphericalSplitNetNats(mr, psx[mr], psy[mr], pq[mr], [s0, s1], scanPen);
+            if (net > 0 && (!bestVal || net > bestVal.net)) {
+              const thr = 0.5 * (proj[kc - 1][0] + proj[kc][0]);
+              const f0 = { n: 0, sx: 0, sy: 0, q: 0 }, f1 = { n: 0, sx: 0, sy: 0, q: 0 };
+              for (const idx of memberIdx) {
+                const x = chunk[2 * idx], y = chunk[2 * idx + 1], q = x * x + y * y;
+                const t = (x - cx) * ux + (y - cy) * uy < thr ? f0 : f1;
+                t.n++; t.sx += x; t.sy += y; t.q += q;
+              }
+              if (notCoveredByNeighbor(ros, j, f0.n, mj, f0.sx, f0.sy) && notCoveredByNeighbor(ros, j, f1.n, mj, f1.sx, f1.sy)) {
+                bestVal = { net, j, subs: [f0, f1] };
+              }
             }
           }
         }
       }
-      if (bestSplit) {
-        const bNeg = { tRef: state.tau, rateN: bestSplit.cntN, sn: new Float64Array(9).fill(bestSplit.cntN), sq: new Float64Array(9).fill(bestSplit.qn), vw2: new Float64Array(5).fill(bestSplit.cntN), vs: new Float64Array(10) };
-        const bPos = { tRef: state.tau, rateN: bestSplit.cntP, sn: new Float64Array(9).fill(bestSplit.cntP), sq: new Float64Array(9).fill(bestSplit.qp), vw2: new Float64Array(5).fill(bestSplit.cntP), vs: new Float64Array(10) };
-        for (let r = 0; r < 5; r++) {
-          bNeg.vs[2 * r] = bestSplit.snx; bNeg.vs[2 * r + 1] = bestSplit.sny;
-          bPos.vs[2 * r] = bestSplit.spx; bPos.vs[2 * r + 1] = bestSplit.spy;
-        }
-        state.banks[bestSplit.j] = bNeg; state.cands[bestSplit.j] = null;
-        state.banks.push(bPos); state.cands.push(null);
-        invalidateStolenCands(state, bestSplit.spx / bestSplit.cntP, bestSplit.spy / bestSplit.cntP);
-        splitPair = [bestSplit.j, state.banks.length - 1];
+      if (bestVal) {
+        const { j, subs } = bestVal;
+        state.banks[j] = mk(subs[0]); state.cands[j] = null; state.sketches[j] = makeMicroSketch(8, 40);
+        state.banks.push(mk(subs[1])); state.cands.push(null); state.sketches.push(makeMicroSketch(8, 40));
+        invalidateStolenCands(state, subs[1].sx / subs[1].n, subs[1].sy / subs[1].n);
+        splitDonor = j; newIdxs.push(state.banks.length - 1); didSplit = true;
       } else {
-        // Seed fresh causal candidate split at `0.5 * ||x_far - c_j||` for mature clusters:
         for (let j = 0; j < state.banks.length; j++) {
           if (ros[j].nEff >= 12 && farIdx[j] >= 0) {
             const fi = farIdx[j], cx = ros[j].x, cy = ros[j].y;
-            const dx = chunk[2 * fi] - cx, dy = chunk[2 * fi + 1] - cy;
-            const len = Math.hypot(dx, dy);
+            const dx = chunk[2 * fi] - cx, dy = chunk[2 * fi + 1] - cy, len = Math.hypot(dx, dy);
             if (len > 1e-12 && (!state.cands[j] || (len > 3.0 * state.cands[j].thr && state.cands[j].np < 4))) {
-              state.cands[j] = { cx, cy, ux: dx / len, uy: dy / len, thr: 0.5 * len, nn: 0, z1n: 0, z2n: 0, snx: 0, sny: 0, qn: 0, np: 0, z1p: 0, z2p: 0, spx: 0, spy: 0, qp: 0 };
+              state.cands[j] = { cx, cy, ux: dx / len, uy: dy / len, thr: 0.5 * len, nn: 0, snx: 0, sny: 0, qn: 0, np: 0, spx: 0, spy: 0, qp: 0 };
             }
           }
         }
       }
     }
 
-    // 2. Conjugate scale-free Ward Re-Merge (`Delta K = -1`) along 1D connecting chord `u`:
+    // D. Conjugate Exact Huygens-Steiner D-dim Spherical Ward Re-Merge:
     if (state.banks.length >= 2 && state.tau >= 4.0) {
-      if (splitPair) {
+      if (didSplit) {
         ros = state.banks.map(bk => readoutBank(bk, state.tau));
-        const K2 = ros.length;
-        const bn2 = new Float64Array(K2);
+        const K2 = ros.length, bn2 = new Float64Array(K2);
         for (let i = 0; i < m; i++) {
           const x = chunk[2 * i], y = chunk[2 * i + 1];
           let best = 0, bd = Infinity;
@@ -974,60 +1046,51 @@
         }
         bn = bn2;
       }
+      const isSib = idx => idx === splitDonor || newIdxs.indexOf(idx) >= 0;
       let bestMerge = null;
       for (let j = 0; j < state.banks.length; j++) {
         if (ros[j].nEff < 4 || ros[j].traceVar <= 1e-24) continue;
-        const sj2IsoRaw = Math.max(1e-24, ros[j].traceVar / 2);
+        const sj2Raw = Math.max(1e-24, ros[j].traceVar / 2);
         for (let u = j + 1; u < state.banks.length; u++) {
-          if (splitPair && ((j === splitPair[0] && u === splitPair[1]) || (j !== splitPair[0] && j !== splitPair[1] && u !== splitPair[0] && u !== splitPair[1]))) continue;
+          if (didSplit && (isSib(j) === isSib(u))) continue;
           if (ros[u].nEff < 4 || ros[u].traceVar <= 1e-24) continue;
-          const su2IsoRaw = Math.max(1e-24, ros[u].traceVar / 2);
-          let sj2Iso = sj2IsoRaw, su2Iso = su2IsoRaw;
+          const su2Raw = Math.max(1e-24, ros[u].traceVar / 2);
+          let sj2 = sj2Raw, su2 = su2Raw;
           const dxC = ros[u].x - ros[j].x, dyC = ros[u].y - ros[j].y;
           const d2 = dxC * dxC + dyC * dyC;
           const nj = ros[j].nEff, nu = ros[u].nEff, nt = nj + nu;
           const pj = Math.min(1 - 1e-9, Math.max(1e-9, nj / nt)), pu = 1 - pj;
 
-          let sj2U = sj2Iso, su2U = su2Iso;
           if (d2 > 1e-24 && bn[j] >= 4 && bn[u] >= 4) {
             const invL = 1 / Math.sqrt(d2);
-            let m1J = 0, m2J = 0, cJ = 0, m1U = 0, m2U = 0, cU = 0;
             let outJ = 0, nOutJ = 0, outU = 0, nOutU = 0;
             for (let i = 0; i < m; i++) {
               if (labels[i] === j) {
                 const dx = chunk[2 * i] - ros[j].x, dy = chunk[2 * i + 1] - ros[j].y;
-                const z = (dx * dxC + dy * dyC) * invL;
-                m1J += z; m2J += z * z; cJ++;
-                if (z <= 0) { outJ += (dx * dx + dy * dy) / 2; nOutJ++; }
+                if ((dx * dxC + dy * dyC) * invL <= 0) { outJ += (dx * dx + dy * dy) / 2; nOutJ++; }
               } else if (labels[i] === u) {
                 const dx = chunk[2 * i] - ros[u].x, dy = chunk[2 * i + 1] - ros[u].y;
-                const z = (dx * dxC + dy * dyC) * invL;
-                m1U += z; m2U += z * z; cU++;
-                if (z >= 0) { outU += (dx * dx + dy * dy) / 2; nOutU++; }
+                if ((dx * dxC + dy * dyC) * invL >= 0) { outU += (dx * dx + dy * dy) / 2; nOutU++; }
               }
             }
-            if (cJ >= 4) sj2U = Math.min(sj2IsoRaw, Math.max(1e-24, (m2J - (m1J * m1J) / cJ) / (cJ - 1)));
-            if (cU >= 4) su2U = Math.min(su2IsoRaw, Math.max(1e-24, (m2U - (m1U * m1U) / cU) / (cU - 1)));
-            if (nOutJ >= 3) sj2Iso = Math.min(sj2IsoRaw, Math.max(1e-24, outJ / nOutJ));
-            if (nOutU >= 3) su2Iso = Math.min(su2IsoRaw, Math.max(1e-24, outU / nOutU));
+            if (nOutJ >= 3) sj2 = Math.min(sj2Raw, Math.max(1e-24, outJ / nOutJ));
+            if (nOutU >= 3) su2 = Math.min(su2Raw, Math.max(1e-24, outU / nOutU));
           }
-          const sBarU = pj * sj2U + pu * su2U;
-          const sBarIso = pj * sj2Iso + pu * su2Iso;
-          const chordNats = 0.5 * nt * Math.log(1 + (pj * pu * d2) / sBarU);
-          const scaleNats = nt * Math.max(0, Math.log(sBarIso) - pj * Math.log(sj2Iso) - pu * Math.log(su2Iso));
-          const distCost = chordNats + scaleNats;
-          const hMerge = -pj * Math.log(pj) - pu * Math.log(pu);
-          const savedNats = nt * hMerge + dfParam * (Math.log(1 + nj) + Math.log(1 + nu) - Math.log(1 + nt));
-          if (distCost < savedNats && (!bestMerge || (distCost - savedNats) < bestMerge.net)) {
-            bestMerge = { net: distCost - savedNats, j, u };
+          const sMerged2 = pj * sj2 + pu * su2 + 0.5 * pj * pu * d2;
+          const distortNats = nt * (Math.log(sMerged2) - pj * Math.log(sj2) - pu * Math.log(su2));
+          const savedNats = nt * (-pj * Math.log(pj) - pu * Math.log(pu)) + 2.0 * (Math.log(1 + nj) + Math.log(1 + nu) - Math.log(1 + nt));
+          if (distortNats < savedNats && (!bestMerge || (distortNats - savedNats) < bestMerge.net)) {
+            bestMerge = { net: distortNats - savedNats, j, u };
           }
         }
       }
       if (bestMerge) {
         const rem = state.banks.splice(bestMerge.u, 1)[0];
         state.cands.splice(bestMerge.u, 1);
+        state.sketches.splice(bestMerge.u, 1);
         mergeBankInto(state.banks[bestMerge.j], rem);
         state.cands[bestMerge.j] = null;
+        state.sketches[bestMerge.j] = makeMicroSketch(8, 40);
       }
     }
   }
